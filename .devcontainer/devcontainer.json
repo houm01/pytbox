@@ -1,0 +1,79 @@
+{
+  "name": "Python DevOps Environment",
+  "build": {
+      "dockerfile": "Dockerfile.dev"
+  },
+  // VS Code 扩展
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "njpwerner.autodocstring",
+        "ecmel.vscode-html-css",
+        "ms-python.pylint",
+        "donjayamanne.python-extension-pack",
+        "wayou.vscode-todo-highlight",
+        "redhat.vscode-yaml",
+        "ms-toolsai.jupyter",
+        "be5invis.toml",
+        "tamasfe.even-better-toml",
+        "WyattFerguson.jinja2-snippet-kit"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.formatting.provider": "black",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.linting.lintOnSave": true,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.organizeImports": true
+        },
+        "terminal.integrated.defaultProfile.linux": "zsh"
+      }
+    }
+  },
+
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh/,target=/root/.ssh,type=bind,consistency=cached"
+  ],
+
+  // 容器启动后执行的命令
+  "postCreateCommand": "bash .devcontainer/post_command.sh",
+
+  // 用户设置
+  "containerUser": "root",
+
+  "remoteEnv": {
+        "OP_CONNECT_HOST": "${localEnv:OP_CONNECT_HOST}",
+        "OP_CONNECT_TOKEN": "${localEnv:OP_CONNECT_TOKEN}"
+    },
+  
+  // 工作目录
+  "workspaceFolder": "/workspaces/pytbox",
+
+  // 环境变量
+  "containerEnv": {
+    "PYTHONPATH": "/workspaces/pytbox/src",
+    "LANG": "zh_CN.UTF-8",
+    "LC_ALL": "zh_CN.UTF-8"
+  },
+
+  // 生命周期脚本
+  "initializeCommand": "echo '正在初始化 Python 运维开发环境...'",
+  "onCreateCommand": "echo '容器创建完成，正在安装依赖...'",
+  "updateContentCommand": "echo '正在更新开发环境...'",
+  "postStartCommand": "echo '开发环境已就绪！'",
+
+  // 安全设置
+  "runArgs": [
+    "--cap-add=SYS_PTRACE",
+    "--security-opt", "seccomp=unconfined"
+  ],
+
+  // 开发容器元数据
+  "otherPortsAttributes": {
+    "onAutoForward": "silent"
+  }
+}
