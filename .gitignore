@@ -194,4 +194,13 @@ secrets.json
 *.zip
 *.rar
 
-tests/
+# Test generated files (but keep test source code)
+tests/__pycache__/
+tests/*.pyc
+tests/.coverage
+tests/htmlcov/
+tests/.pytest_cache/
+test-reports/
+test-results/
+
+env.sh

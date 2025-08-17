@@ -5,140 +5,24 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pytbox"
 version = "0.1.0"
-description = "Python 运维工具箱"
+description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
+authors = [{ name = "你的名字", email = "you@example.com" }]
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
-authors = [
-    {name = "Your Name", email = "your.email@example.com"},
-]
-maintainers = [
-    {name = "Your Name", email = "your.email@example.com"},
-]
-keywords = ["python", "devops", "tools", "automation"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: System :: Systems Administration",
-]
+
 dependencies = [
-    "click>=8.0.0",
-    "requests>=2.25.0",
-    "pyyaml>=6.0",
-    "rich>=12.0.0",
+    "requests>=2.0",
+    "pydantic>=1.10"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
-    "isort>=5.10.0",
-    "mypy>=0.991",
-    "pre-commit>=2.20.0",
+    "pytest",
+    "black",
+    "ruff",
+    "python-dotenv"
 ]
-test = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-    "pytest-mock>=3.8.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/yourusername/pytbox"
-Repository = "https://github.com/yourusername/pytbox"
-Documentation = "https://github.com/yourusername/pytbox#readme"
-"Bug Tracker" = "https://github.com/yourusername/pytbox/issues"
-
-[project.scripts]
-pytbox = "pytbox.cli:main"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = ["pytbox"]
-
-[tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = [
-    "--strict-markers",
-    "--strict-config",
-    "--cov=pytbox",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-]
-
-[tool.coverage.run]
-source = ["src/pytbox"]
-omit = [
-    "*/tests/*",
-    "*/test_*",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
