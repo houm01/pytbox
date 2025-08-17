@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import requests
-from pytbox.utils.response import ReturnResponse
+from .utils.response import ReturnResponse
 
 
 class VictoriaMetrics:
