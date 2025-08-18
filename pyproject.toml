@@ -4,14 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "20250818.4"
+version = "0.0.1"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.8"
 
-dependencies = ["requests>=2.0", "pydantic>=1.10"]
+dependencies = [
+    "requests>=2.0",
+    "pydantic>=1.10",
+    "onepassword>=1.0.0",
+    "onepasswordconnectsdk>=1.0.0",
+]
 
 [project.optional-dependencies]
 dev = ["pytest", "black", "ruff", "python-dotenv"]
