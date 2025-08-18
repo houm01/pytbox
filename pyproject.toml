@@ -4,25 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.1.0"
+version = "20250818.2"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
-authors = [{ name = "你的名字", email = "you@example.com" }]
+authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.8"
 
-dependencies = [
-    "requests>=2.0",
-    "pydantic>=1.10"
-]
+dependencies = ["requests>=2.0", "pydantic>=1.10"]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "black",
-    "ruff",
-    "python-dotenv"
-]
+dev = ["pytest", "black", "ruff", "python-dotenv"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
