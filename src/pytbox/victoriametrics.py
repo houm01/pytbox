@@ -32,6 +32,6 @@ class VictoriaMetrics:
             params={"query": query}
         )
         if r.json().get("status") == "success":
-            return ReturnResponse(code=0, msg=f"[{query}] 查询成功!", data=r.json())
+            return ReturnResponse(code=0, msg=f"[{query}] 查询成功!", data=r.json()['data']['result'])
         else:
             return ReturnResponse(code=1, msg=f"[{query}] 查询失败: {r.json().get('error')}", data=r.json())
