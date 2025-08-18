@@ -239,7 +239,7 @@ ruff check src/ tests/
 如有问题或建议，请通过以下方式联系：
 
 - 提交 [Issue](https://github.com/your-username/pytbox/issues)
-- 发送邮件至 you@example.com
+- 发送邮件至 houm01@foxmail.com
 
 ---
 
