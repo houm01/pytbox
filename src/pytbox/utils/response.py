@@ -21,7 +21,7 @@ class ReturnResponse:
             8 - 服务不可用 (SERVICE_UNAVAILABLE)
             9 - 数据库错误 (DATABASE_ERROR)
             10 - 网络错误 (NETWORK_ERROR)
-        message: 响应消息描述
+        msg: 响应消息描述
         data: 响应数据，可以是任意类型
     """
     code: int = 0

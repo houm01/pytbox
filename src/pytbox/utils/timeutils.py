@@ -4,6 +4,7 @@
 import time
 import pytz
 import datetime
+from typing import Literal
 
 
 class TimeUtils:
@@ -38,3 +39,15 @@ class TimeUtils:
     @staticmethod
     def get_utc_time():
         return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    
+    @staticmethod
+    def get_now_time_mongo():
+        return datetime.datetime.now(pytz.timezone('Asia/Shanghai'))
+
+    @staticmethod
+    def convert_timeobj_to_str(timeobj: str=None, timezone_offset: int=8, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S'):
+        time_obj_with_offset = timeobj + datetime.timedelta(hours=timezone_offset)
+        if time_format == '%Y-%m-%d %H:%M:%S':
+            return time_obj_with_offset.strftime("%Y-%m-%d %H:%M:%S")
+        elif time_format == '%Y-%m-%dT%H:%M:%SZ':
+            return time_obj_with_offset.strftime("%Y-%m-%dT%H:%M:%SZ")

@@ -28,14 +28,8 @@ class Task:
     completed_time: str
     assignee: int
 
-@dataclass
-class DidaResponse:
-    code: int
-    message: str
-    data: dict
 
-
-class ProcessDidaResponse:    
+class ProcessReturnResponse:    
     @staticmethod
     def status(status):
         if status == 0:
@@ -89,7 +83,7 @@ class Dida365:
         }
         self.timeout = 10
 
-    def request(self, api_url: str=None, method: str='GET', payload: dict={}):
+    def request(self, api_url: str=None, method: str='GET', payload: dict={}) -> ReturnResponse:
         """发送请求。
         
         Args:
@@ -108,14 +102,14 @@ class Dida365:
         
         if response.status_code == 200:
             if 'complete' in api_url:
-                return DidaResponse(code=0, msg='success', data=None)
+                return ReturnResponse(code=0, msg='success', data=None)
             else:
                 try:
-                    return DidaResponse(code=0, msg='success', data=response.json())
-                except Exception as e:
-                    return DidaResponse(code=1, msg='warning', data=response)
+                    return ReturnResponse(code=0, msg='success', data=response.json())
+                except Exception:
+                    return ReturnResponse(code=1, msg='warning', data=response)
         else:
-            return DidaResponse(code=1, msg='error', data=response.json())
+            return ReturnResponse(code=1, msg='error', data=response.json())
 
     def task_list(self, project_id: str, enhancement: bool=True):
         """获取任务列表。
@@ -142,8 +136,8 @@ class Dida365:
                         desc=task.get('desc'),
                         start_date=task.get('startDate'),
                         due_date=task.get('dueDate'),
-                        priority=ProcessDidaResponse.priority(task.get('priority')),
-                        status=ProcessDidaResponse.status(task.get('status')),
+                        priority=ProcessReturnResponse.priority(task.get('priority')),
+                        status=ProcessReturnResponse.status(task.get('status')),
                         tags=task.get('tags'),
                         completed_time=task.get('completedTime'),
                         assignee=task.get('assignee'))
@@ -157,8 +151,8 @@ class Dida365:
                         desc=task.get('desc'),
                         start_date=task.get('startDate'),
                         due_date=task.get('dueDate'),
-                        priority=ProcessDidaResponse.priority(task.get('priority')),
-                        status=ProcessDidaResponse.status(task.get('status')),
+                        priority=ProcessReturnResponse.priority(task.get('priority')),
+                        status=ProcessReturnResponse.status(task.get('status')),
                         tags=task.get('tags'),
                         completed_time=task.get('completedTime'),
                         assignee=task.get('assignee'))

@@ -1,5 +1,5 @@
 {
-  "name": "Python DevOps Environment",
+  "name": "pytbox",
   "build": {
       "dockerfile": "Dockerfile.dev"
   },
@@ -55,9 +55,7 @@
 
   // 环境变量
   "containerEnv": {
-    "PYTHONPATH": "/workspaces/pytbox/src",
-    "LANG": "zh_CN.UTF-8",
-    "LC_ALL": "zh_CN.UTF-8"
+    "PYTHONPATH": "/workspaces/pytbox/src"
   },
 
   // 生命周期脚本

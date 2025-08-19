@@ -20,14 +20,6 @@ class AliCloudSls:
         self.logstore = logstore
 
     def get_logs(self, project_name, logstore_name, query, from_time, to_time): 
-        # Project名称。
-        # project_name = "sh-prod-network-devices-log"
-        # Logstore名称
-        # logstore_name = "sh-prod-network-devices-log"
-        # 查询语句。
-        # query = "*| select dev,id from " + logstore_name
-        # query = "*"
-        # 索引。
         logstore_index = {'line': {
             'token': [',', ' ', "'", '"', ';', '=', '(', ')', '[', ']', '{', '}', '?', '@', '&', '<', '>', '/', ':', '\n', '\t',
                     '\r'], 'caseSensitive': False, 'chn': False}, 'keys': {'dev': {'type': 'text',
