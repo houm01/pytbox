@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
-
-# from .base import vm
-from base import vm
+from pytbox.base import vm
 
 
 

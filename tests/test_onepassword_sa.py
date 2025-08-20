@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
-from pytbox.myonepassword import OnePasswordClient
+from pytbox.onepassword_sa import OnePasswordClient
 
 
 # 简单测试

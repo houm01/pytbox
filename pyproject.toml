@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.0.4"
+version = "0.0.5"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = { text = "MIT" }
@@ -14,8 +14,11 @@ requires-python = ">=3.8"
 dependencies = [
     "requests>=2.0",
     "pydantic>=1.10",
-    "onepassword-sdk>=0.3.1",
+    # 这个包 28M, 如果从官方源下载太慢了, 先禁用一下，等以后版本稳定了，同步到国内源了再取消注释
+    # "onepassword-sdk>=0.3.1",
     "onepasswordconnectsdk>=1.0.0",
+    "loguru>=0.7.3",
+    "chinese_calendar>=1.10.0"
 ]
 
 [project.optional-dependencies]

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-import os
-from pytbox.logger import AppLogger
+from pytbox.base import get_logger
 
 
-log = AppLogger('test_logger', enable_victorialog=True, victorialog_url=os.getenv("VICTORIALOG_URL"))
 
+log = get_logger('tests.test_logger')
 
 def test_logger_info():
     log.info('test_logger_info')
+    log.error('test error log2')
 
 
 if __name__ == "__main__":

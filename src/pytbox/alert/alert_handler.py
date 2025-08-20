@@ -4,7 +4,6 @@
 import uuid
 from typing import Literal
 from ..database.mongo import Mongo
-from ..base import MongoClient
 from ..feishu.client import Client as FeishuClient
 from ..dida365 import Dida365
 from ..utils.timeutils import TimeUtils
@@ -14,7 +13,7 @@ class AlertHandler:
     
     def __init__(self, 
                  config: dict=None,
-                 mongo_client: Mongo=MongoClient(collection='alert'),
+                 mongo_client: Mongo=None,
                  feishu_client: FeishuClient=None,
                  dida_client: Dida365=None
             ):
@@ -70,7 +69,8 @@ class AlertHandler:
                 f'**事件内容**: {event_content}',
                 f'**告警实例**: {entity_name}',
                 f'**建议**: {suggestion}',
-                f'**故障排查**: {troubleshot}'
+                f'**故障排查**: {troubleshot}',
+                f'**历史告警**: {self.mongo.recent_alerts(event_content=event_content)}'
             ]
             
             if event_type == "resolved":

@@ -86,8 +86,8 @@ class VictoriaMetrics:
         
         return ReturnResponse(code=code, msg=msg, data=data)
 
-    def query_interface_rate(self,
-                             direction: Literal['in', 'out'], 
+    def check_interface_rate(self,
+                             direction: Literal['in', 'out'],
                              sysName: str, 
                              ifName:str, 
                              last_minutes: Optional[int] = None
@@ -109,5 +109,5 @@ class VictoriaMetrics:
         else:
             query = f'(rate(snmp_interface_ifHCOutOctets{{sysName="{sysName}", ifName="{ifName}"}}[{last_minutes}m])) * 8 / 1000000'
         r = self.query(query)
-        rate = r.data['values'][1]
+        rate = r.data[0]['value'][1]
         return int(float(rate))

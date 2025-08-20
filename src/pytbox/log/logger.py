@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 
 import sys
+
 from loguru import logger
+
 from .victorialog import Victorialog
+from ..database.mongo import Mongo
+from ..feishu.client import Client as FeishuClient
+from ..utils.timeutils import TimeUtils
+from ..dida365 import Dida365
 
 
 logger.remove()
@@ -21,6 +27,9 @@ class AppLogger:
                  stream: str='automation', 
                  enable_victorialog: bool=False, 
                  victorialog_url: str=None,
+                 mongo: Mongo=None,
+                 feishu: FeishuClient=None,
+                 dida: Dida365=None,
                  enable_sls: bool=False,
                  sls_url: str=None,
                  sls_access_key_id: str=None,
@@ -40,6 +49,9 @@ class AppLogger:
         self.stream = stream
         self.victorialog = Victorialog(url=victorialog_url)
         self.enable_victorialog = enable_victorialog
+        self.mongo = mongo
+        self.feishu = feishu
+        self.dida = dida
     
     def _get_caller_info(self) -> tuple[str, int, str]:
         """
@@ -90,10 +102,48 @@ class AppLogger:
         logger.error(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             self.victorialog.send_program_log(stream=self.stream, level="ERROR", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
-        from src.library.monitor.insert_program import insert_error_message
-        # 传递清理后的消息给监控系统
-        message.replace('#', '')
-        insert_error_message(message, self.app_name, caller_filename, caller_lineno, caller_function)
+        
+        if self.feishu:
+            existing_message = self.mongo.collection.find_one({"message": message}, sort=[("time", -1)])
+            current_time = TimeUtils.get_now_time_mongo()
+
+            if not existing_message or TimeUtils.get_time_diff_hours(existing_message["time"], current_time) > 36:
+                self.mongo.collection.insert_one({
+                    "message": message,
+                    "time": current_time,
+                    "file_name": caller_filename,
+                    "line_number": caller_lineno,
+                    "function_name": caller_function
+                })
+                    
+                    
+                content_list = [
+                    f"{self.feishu.extensions.format_rich_text(text='app:', color='blue', bold=True)} {self.app_name}",
+                    f"{self.feishu.extensions.format_rich_text(text='message:', color='blue', bold=True)} {message}",
+                    f"{self.feishu.extensions.format_rich_text(text='file_name:', color='blue', bold=True)} {caller_filename}",
+                    f"{self.feishu.extensions.format_rich_text(text='line_number:', color='blue', bold=True)} {caller_lineno}",
+                    f"{self.feishu.extensions.format_rich_text(text='function_name:', color='blue', bold=True)} {caller_function}"
+                ]
+                
+                self.feishu.extensions.send_message_notify(
+                    title=f"自动化脚本告警: {self.app_name}",
+                    content="\n".join(content_list)
+                )
+                
+                dida_content_list = [
+                    f"**app**: {self.app_name}",
+                    f"**message**: {message}",
+                    f"**file_name**: {caller_filename}",
+                    f"**line_number**: {caller_lineno}",
+                    f"**function_name**: {caller_function}"
+                ]
+                
+                self.dida.task_create(
+                    project_id="65e87d2b3e73517c2cdd9d63",
+                    title=f"自动化脚本告警: {self.app_name}",
+                    content="\n".join(dida_content_list),
+                    tags=['L-程序告警', 't-问题处理']
+                )
         
     def critical(self, message: str):
         """记录严重错误级别日志"""
@@ -103,24 +153,6 @@ class AppLogger:
             self.victorialog.send_program_log(stream=self.stream, level="CRITICAL", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
 
 
-def get_logger(app_name: str, enable_) -> AppLogger:
-    """
-    获取应用日志记录器实例
-    
-    Args:
-        app_name: 应用名称
-        log_level: 日志级别
-        enable_influx: 是否启用InfluxDB记录
-    
-    Returns:
-        AppLogger: 日志记录器实例
-    """
-    return AppLogger(app_name)
-
-
 # 使用示例
 if __name__ == "__main__":
-    log = get_logger(app_name='test')
-    log.info("That's it, beautiful and simple logging!")
-    log.warning("That's it, beautiful and simple logging!")
-    log.error("That's it, beautiful and simple logging!11")
+    pass

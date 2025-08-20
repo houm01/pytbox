@@ -3,8 +3,8 @@
 from typing import Literal
 import requests
 import time
-from .utils.response import ReturnResponse
-from .utils.timeutils import TimeUtils
+from ..utils.response import ReturnResponse
+from ..utils.timeutils import TimeUtils
 
 
 
