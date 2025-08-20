@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from typing import Literal, Optional
 import requests
 from ..utils.response import ReturnResponse
 
@@ -38,7 +39,16 @@ class VictoriaMetrics:
                 return ReturnResponse(code=2, msg=f"[{query}] 没有查询到结果", data=r.json())
         else:
             return ReturnResponse(code=1, msg=f"[{query}] 查询失败: {r.json().get('error')}", data=r.json())
-    
+
+    def get_labels(self, metric_name: str) -> ReturnResponse:
+        url = f"{self.url}/api/v1/series?match[]={metric_name}"
+        response = requests.get(url, timeout=self.timeout)
+        results = response.json()
+        if results['status'] == 'success':
+            return ReturnResponse(code=0, msg=f"metric name: {metric_name} 获取到 {len(results['data'])} 条数据", data=results['data'])
+        else:
+            return ReturnResponse(code=1, msg=f"metric name: {metric_name} 查询失败")
+
     def check_ping_result(self, target: str, last_minute: int=10) -> ReturnResponse:
         '''
         检查ping结果
@@ -60,7 +70,7 @@ class VictoriaMetrics:
                 msg = f"已检查 {target} 最近 {last_minute} 分钟是正常的!"
             else:
                 if all(str(item[1]) == "1" for item in values):
-                    code = 2
+                    code = 1
                     msg = f"已检查 {target} 最近 {last_minute} 分钟是异常的!"
                 else:
                     code = 0
@@ -75,3 +85,29 @@ class VictoriaMetrics:
             data = r.data
         
         return ReturnResponse(code=code, msg=msg, data=data)
+
+    def query_interface_rate(self,
+                             direction: Literal['in', 'out'], 
+                             sysName: str, 
+                             ifName:str, 
+                             last_minutes: Optional[int] = None
+                            ) -> ReturnResponse:
+        """查询指定设备的入方向总流量速率（bps）。
+
+        使用 PromQL 对 `snmp_interface_ifHCInOctets` 进行速率计算并聚合到设备级别，
+        将结果从字节每秒转换为比特每秒（乘以 8）。
+
+        Args:
+            sysName: 设备 `sysName` 标签值。
+            last_minutes: 计算速率的时间窗口（分钟）。未提供时默认使用 5 分钟窗口。
+
+        Returns:
+            ReturnResponse: 查询结果包装。
+        """
+        if direction == 'in':
+            query = f'(rate(snmp_interface_ifHCInOctets{{sysName="{sysName}", ifName="{ifName}"}}[{last_minutes}m])) * 8 / 1000000'
+        else:
+            query = f'(rate(snmp_interface_ifHCOutOctets{{sysName="{sysName}", ifName="{ifName}"}}[{last_minutes}m])) * 8 / 1000000'
+        r = self.query(query)
+        rate = r.data['values'][1]
+        return int(float(rate))

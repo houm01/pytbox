@@ -24,7 +24,7 @@ vm = VictoriaMetrics(url=config['victoriametrics']['url'])
 def ping(target):
     
     r = vm.check_ping_result(target=target, last_minute=config['alert']['ping']['last_minute'])
-    if r.code == 2:
+    if r.code == 1:
         print(r)
         alert_handler.send_alert(
             event_type='trigger',
@@ -56,5 +56,5 @@ def resolved():
 
 if __name__ == "__main__":
     # config = load_config()
-    # ping("121.46.237.185")
-    resolved()
+    ping("121.46.237.185")
+    # resolved()
