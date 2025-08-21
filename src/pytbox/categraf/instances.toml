@@ -10,3 +10,7 @@
 [vsphere]
 [[vsphere.instance]]
 "test" = { vcenter = "https://10.1.1.1/sdk", username = "categraf@vsphere.local", password = "xxx" }
+
+[http_response]
+[[http_response.instance]]
+"https://www.baidu.com" = { name = "x", env = "prod" }

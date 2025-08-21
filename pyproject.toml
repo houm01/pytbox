@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.0.7"
+version = "0.0.8"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = { text = "MIT" }
@@ -36,3 +36,8 @@ cli = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"pytbox.categraf" = ["*.toml", "**/*.toml"]
+"pytbox.categraf.jinja2" = ["**/*.j2"]
+"pytbox.categraf.jinja2.*" = ["*.j2"]

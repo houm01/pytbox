@@ -1,0 +1,8 @@
+
+
+[[instances]]
+targets = [
+    "https://www.baidu.com"
+]
+labels = { name = "x", env = "prod" }
+
