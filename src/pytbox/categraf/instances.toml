@@ -6,3 +6,7 @@
 [prometheus]
 [[prometheus.urls]]
 "http://10.200.12.202:9100" = { name = "x", env = "prod" }
+
+[vsphere]
+[[vsphere.instance]]
+"test" = { vcenter = "https://10.1.1.1/sdk", username = "categraf@vsphere.local", password = "xxx" }
