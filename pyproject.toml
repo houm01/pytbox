@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.0.8"
+version = "0.0.9"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
-license = { text = "MIT" }
+license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
 
@@ -34,10 +34,8 @@ cli = [
     "toml>=0.10.0",  # TOML 输出支持
 ]
 
+[tool.setuptools]
+include-package-data = true
+
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-"pytbox.categraf" = ["*.toml", "**/*.toml"]
-"pytbox.categraf.jinja2" = ["**/*.j2"]
-"pytbox.categraf.jinja2.*" = ["*.j2"]
