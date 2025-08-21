@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.0.5"
+version = "0.0.6"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = { text = "MIT" }
@@ -18,11 +18,21 @@ dependencies = [
     # "onepassword-sdk>=0.3.1",
     "onepasswordconnectsdk>=1.0.0",
     "loguru>=0.7.3",
-    "chinese_calendar>=1.10.0"
+    "chinese_calendar>=1.10.0",
+    "click>=8.0.0",                 # 添加 click 依赖
+    "rich>=12.0.0",                 # 添加 rich 依赖
 ]
+
+[project.scripts]
+pytbox = "pytbox.cli:main" # 添加命令行入口点
 
 [project.optional-dependencies]
 dev = ["pytest", "black", "ruff", "python-dotenv"]
+cli = [
+    "jinja2>=3.0.0", # 模板渲染
+    "pyyaml>=6.0",   # YAML 输出支持
+    "toml>=0.10.0",  # TOML 输出支持
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

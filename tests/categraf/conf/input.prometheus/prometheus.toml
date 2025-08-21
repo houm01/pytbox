@@ -1,0 +1,11 @@
+
+
+[[instances]]
+urls = [
+    "http://10.200.12.202:9100"
+]
+
+url_label_key = "instance"
+url_label_value = "{{.Host}}"
+labels = { name = "x", env = "prod" }
+

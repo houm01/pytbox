@@ -1,0 +1,12 @@
+{% for instance in instances %}
+{% for instance, labels in instance.items() %}
+[[instances]]
+urls = [
+    "{{ instance }}"
+]
+
+url_label_key = "instance"
+url_label_value = "{{ '{{.Host}}' }}"
+labels = { {% for k, v in labels.items() %}{% if not loop.first %}, {% endif %}{% if k.isidentifier() %}{{ k }}{% else %}"{{ k }}"{% endif %} = "{{ v }}"{% endfor %} }
+{% endfor %}
+{% endfor %}

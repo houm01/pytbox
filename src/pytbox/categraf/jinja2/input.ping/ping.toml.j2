@@ -1,0 +1,11 @@
+{% for instance in instances %}
+{% for target, labels in instance.items() %}
+[[instances]]
+targets = [
+    "{{ target }}"
+]
+method = "exec"
+count = 3
+labels = { {% for k, v in labels.items() %}{% if not loop.first %}, {% endif %}{% if k.isidentifier() %}{{ k }}{% else %}"{{ k }}"{% endif %} = "{{ v }}"{% endfor %} }
+{% endfor %}
+{% endfor %}

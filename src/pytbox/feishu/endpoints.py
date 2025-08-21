@@ -930,9 +930,12 @@ class ExtensionsEndpoint(Endpoint):
                     final_data = fields[name][0].get('value')[0]['text']
                 
             elif isinstance(fields[name], int):
-                # 将时间戳转换为时间字符串格式
-                final_data = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(fields[name] / 1000 ))
-                
+                if len(str(fields[name])) >= 12 and fields[name] > 10**11:
+                        final_data = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(fields[name] / 1000))
+                elif len(str(fields[name])) == 10 and 10**9 < fields[name] < 10**11:
+                    final_data = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(fields[name]))
+                else:
+                    final_data = fields[name]
             elif isinstance(fields[name], dict):
                 if fields[name].get('type') == 1:
                     final_data = fields[name].get('value')[0]['text']

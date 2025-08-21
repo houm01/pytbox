@@ -1,0 +1,18 @@
+
+
+[[instances]]
+targets = [
+    "10.1.1.1"
+]
+method = "exec"
+count = 3
+labels = { name = "x", env = "prod" }
+
+[[instances]]
+targets = [
+    "10.1.1.2"
+]
+method = "exec"
+count = 3
+labels = { name = "demo02", env = "dev" }
+

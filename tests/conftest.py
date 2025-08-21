@@ -17,3 +17,4 @@ def ping_targets(request):
     """提供多个测试目标，用于参数化测试"""
     return request.param
 
+

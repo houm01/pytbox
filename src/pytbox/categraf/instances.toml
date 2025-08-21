@@ -1,0 +1,8 @@
+[ping]
+[[ping.instance]]
+"10.1.1.1" = { name = "x", env = "prod" }
+"10.1.1.2" = { name = "demo02", env = "dev" }
+
+[prometheus]
+[[prometheus.urls]]
+"http://10.200.12.202:9100" = { name = "x", env = "prod" }

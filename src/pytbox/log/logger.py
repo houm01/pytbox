@@ -85,7 +85,6 @@ class AppLogger:
         logger.info(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             r = self.victorialog.send_program_log(stream=self.stream, level="INFO", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
-            print(r)
         if feishu_notify:
             self.feishu(message)
     
