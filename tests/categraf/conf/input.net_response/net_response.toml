@@ -1,0 +1,8 @@
+
+
+[[instances]]
+targets = [
+    "124.74.245.90:8443"
+]
+labels = { name = "x", env = "prod" }
+

@@ -1,0 +1,41 @@
+{% for instance in instances %}
+{% for agent, detail in instance.items() %}
+[[instances]]
+agents = [
+    "udp://{{agent}}"
+]
+{% if detail.version == 2 %}
+version = {{detail.version}}
+community = "{{detail.community}}"
+{% endif %}
+{% if detail.version == 3 %}
+version = {{detail.version}}
+sec_name = "{{detail.sec_name}}"
+auth_protocol = "{{detail.auth_protocol}}"
+auth_password = "{{detail.auth_password}}"
+priv_protocol = "{{detail.priv_protocol}}"
+priv_password = "{{detail.priv_password}}"
+sec_level = "{{detail.sec_level}}"
+{% endif %}
+timeout = "5s"
+retries = 3
+path = ["/usr/share/snmp/mibs"]
+translator = "gosmi"
+max_repetitions = 50
+
+[[instances.field]]
+name = "sysName"
+oid = "1.3.6.1.2.1.1.5.0"
+is_tag = true
+
+[[instances.field]]
+oid = "1.3.6.1.2.1.1.1.0"
+name = "sysDescr"
+is_tag = true
+
+[[instances.field]]
+oid = "1.3.6.1.2.1.1.3.0"
+name = "sysUpTime"
+conversion = "float(2)"
+{% endfor %}
+{% endfor %}

@@ -14,3 +14,22 @@
 [http_response]
 [[http_response.instance]]
 "https://www.baidu.com" = { name = "x", env = "prod" }
+
+
+[net_response]
+[[net_response.instance]]
+"124.74.245.90:8443" = { name = "x", env = "prod" }
+
+[dns_query]
+[[dns_query.instance]]
+"119.29.29.29_baidu.com" = { dns_server = "119.29.29.29", domains = "www.baidu.com", labels = { name = "x", env = "prod" } }
+
+[snmp]
+[[snmp.instances.h3c]]
+"10.1.1.1:161" = { version = 2, community = "public" }
+"10.1.1.2:161" = { version = 2, community = "public" }
+"10.1.1.3:161" = { version = 3, sec_name = "sec", auth_protocol = "SHA", auth_password = "pass01", priv_protocol = "AES", priv_password = "pass02", sec_level = "authPriv" }
+
+# [[snmp.instances.huawei]]
+# "udp://172.16.1.1:161" = { version = 2, community = "public"}
+# "udp://172.16.1.2:161" = { version = 2, community = "public"}

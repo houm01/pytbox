@@ -3,7 +3,8 @@
 import os
 from pathlib import Path
 from pytbox.utils.load_config import load_config_by_file
-
+from glob import glob
+import os
 from jinja2 import Environment, FileSystemLoader
 
 
@@ -61,7 +62,6 @@ class BuildConfig:
     def vsphere(self):
         template = self._get_template('input.vsphere/vsphere.toml.j2')
         instances = self.instances['vsphere']['instance']
-        print(instances)
         render_data = template.render(instances=instances)
         target_dir = Path(self.output_dir) / 'input.vsphere'
         if not target_dir.exists():
@@ -71,21 +71,75 @@ class BuildConfig:
 
     def http_response(self):
         template = self._get_template('input.http_response/http_response.toml.j2')
-        instances = self.instances['http_response']['instance']
-        render_data = template.render(instances=instances)
-        target_dir = Path(self.output_dir) / 'input.http_response'
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True, exist_ok=True)
-        with open(Path(self.output_dir) / 'input.http_response' / 'http_response.toml', 'w', encoding='utf-8') as f:
-            f.write(render_data)
-            
+        if self.instances.get('http_response'):
+            instances = self.instances['http_response']['instance']
+            render_data = template.render(instances=instances)
+            target_dir = Path(self.output_dir) / 'input.http_response'
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+            with open(Path(self.output_dir) / 'input.http_response' / 'http_response.toml', 'w', encoding='utf-8') as f:
+                f.write(render_data)
+
+    def net_response(self):
+        template = self._get_template('input.net_response/net_response.toml.j2')
+        if self.instances.get('net_response'):
+            instances = self.instances['net_response']['instance']
+            render_data = template.render(instances=instances)
+            target_dir = Path(self.output_dir) / 'input.net_response'
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+            with open(Path(self.output_dir) / 'input.net_response' / 'net_response.toml', 'w', encoding='utf-8') as f:
+                f.write(render_data)
+
+    def dns_query(self):
+        template = self._get_template('input.dns_query/dns_query.toml.j2')
+        if self.instances.get('dns_query'):
+            instances = self.instances['dns_query']['instance']
+            render_data = template.render(instances=instances)
+            target_dir = Path(self.output_dir) / 'input.dns_query'
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+            with open(Path(self.output_dir) / 'input.dns_query' / 'dns_query.toml', 'w', encoding='utf-8') as f:
+                f.write(render_data)
+
+    def snmp(self):
+        if self.instances.get('snmp'):
+            device_types = self.instances['snmp']['instances']
+            for device_type in device_types:
+                instances = self.instances['snmp']['instances'][device_type]
+                jinja2_dir = Path(jinja2_path) / 'input.snmp'
+                device_templates = glob(str(jinja2_dir / f'{device_type}_*.toml.j2'))
+                if not device_templates:
+                    continue
+                
+                for tmpl_path in device_templates:
+                    tmpl_name = os.path.basename(tmpl_path)
+                    # 例如 h3c_system.toml.j2 -> h3c_system
+                    base_name = tmpl_name.replace('.toml.j2', '')
+
+                    template = self._get_template(f'input.snmp/{tmpl_name}')
+                    # 修复数据结构：模板期望的是数组，每个元素是字典
+                    # instances 是 [{"udp://10.1.1.1:161": {...}, "udp://10.1.1.2:161": {...}}, ...]
+                    render_data = template.render(instances=instances)
+
+                    target_dir = Path(self.output_dir) / 'input.snmp'
+                    if not target_dir.exists():
+                        target_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    output_file = target_dir / f'{base_name}.toml'
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        f.write(render_data)
+
     def run(self):
-        # self.common('cpu')
-        # self.common('mem')
-        # self.common('net')
-        # self.common('disk')
-        # self.common('diskio')
-        # self.vsphere()
-        # self.ping()
-        # self.prometheus()   
+        self.common('cpu')
+        self.common('mem')
+        self.common('net')
+        self.common('disk')
+        self.common('diskio')
+        self.vsphere()
+        self.ping()
+        self.prometheus()   
         self.http_response()
+        self.net_response()
+        self.dns_query()
+        self.snmp()

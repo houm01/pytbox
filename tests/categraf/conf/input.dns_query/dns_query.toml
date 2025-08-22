@@ -1,0 +1,11 @@
+
+
+[[instances]]
+#  append some labels for series
+labels = { name = "x", env = "prod" }
+servers = ["119.29.29.29"]
+## Domains or subdomains to query.
+domains = ["www.baidu.com"]
+record_type = "A"
+timeout = 2
+

@@ -1,0 +1,12 @@
+{% for instance in instances %}
+{% for name, data in instance.items() %}
+[[instances]]
+#  append some labels for series
+labels = { {% for k, v in data['labels'].items() %}{% if not loop.first %}, {% endif %}{% if k.isidentifier() %}{{ k }}{% else %}"{{ k }}"{% endif %} = "{{ v }}"{% endfor %} }
+servers = ["{{ data['dns_server'] }}"]
+## Domains or subdomains to query.
+domains = ["{{ data['domains'] }}"]
+record_type = "A"
+timeout = 2
+{% endfor %}
+{% endfor %}
