@@ -5,7 +5,7 @@
 
 [prometheus]
 [[prometheus.urls]]
-"http://10.200.12.202:9100" = { name = "x", env = "prod" }
+"http://10.1.1.1:9100" = { name = "x", env = "prod" }
 
 [vsphere]
 [[vsphere.instance]]
@@ -25,6 +25,7 @@
 "119.29.29.29_baidu.com" = { dns_server = "119.29.29.29", domains = "www.baidu.com", labels = { name = "x", env = "prod" } }
 
 [snmp]
+# 支持 h3c,huawei,cisco,ruijie
 [[snmp.instances.h3c]]
 "10.1.1.1:161" = { version = 2, community = "public" }
 "10.1.1.2:161" = { version = 2, community = "public" }

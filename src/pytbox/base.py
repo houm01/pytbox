@@ -8,10 +8,10 @@ from pytbox.feishu.client import Client as FeishuClient
 from pytbox.dida365 import Dida365
 from pytbox.alert.alert_handler import AlertHandler
 from pytbox.log.logger import AppLogger
-
+from pytbox.win.ad import ADClient
+from pytbox.network.meraki import Meraki
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
-
 
 def get_mongo(collection):
     return Mongo(
@@ -46,3 +46,19 @@ def get_logger(app):
         dida=dida,
         mongo=get_mongo('alert_program')
     )
+
+# ad_dev = ADClient(
+#     server=config['ad']['dev']['AD_SERVER'],
+#     base_dn=config['ad']['dev']['BASE_DN'],
+#     username=config['ad']['dev']['AD_USERNAME'],
+#     password=config['ad']['dev']['AD_PASSWORD']
+# )
+
+# ad_prod = ADClient(
+#     server=config['ad']['prod']['AD_SERVER'],
+#     base_dn=config['ad']['prod']['BASE_DN'],
+#     username=config['ad']['prod']['AD_USERNAME'],
+#     password=config['ad']['prod']['AD_PASSWORD']
+# )
+
+meraki = Meraki(api_key=config['meraki']['api_key'], organization_id=config['meraki']['organization_id'])

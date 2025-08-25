@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.1.0"
+version = "0.1.1"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = "MIT"
@@ -21,6 +21,9 @@ dependencies = [
     "chinese_calendar>=1.10.0",
     "click>=8.0.0",                 # 添加 click 依赖
     "rich>=12.0.0",                 # 添加 rich 依赖
+    "jinja2>=3.0.0",                # 模板渲染
+    "toml>=0.10.0",                 # TOML 输出支持
+    "ldap3>=2.9.1",                 # LDAP 支持
 ]
 
 [project.scripts]
@@ -29,9 +32,7 @@ pytbox = "pytbox.cli:main" # 添加命令行入口点
 [project.optional-dependencies]
 dev = ["pytest", "black", "ruff", "python-dotenv"]
 cli = [
-    "jinja2>=3.0.0", # 模板渲染
-    "pyyaml>=6.0",   # YAML 输出支持
-    "toml>=0.10.0",  # TOML 输出支持
+    "pyyaml>=6.0", # YAML 输出支持
 ]
 
 [tool.setuptools]
@@ -39,3 +40,15 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning:pyasn1.*",
+    "ignore:tagMap is deprecated:DeprecationWarning",
+    "ignore:typeMap is deprecated:DeprecationWarning",
+]
+# 显示日志输出
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(name)s: %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"

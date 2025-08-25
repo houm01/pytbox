@@ -1,0 +1,96 @@
+{% for instance in instances %}
+{% for agent, detail in instance.items() %}
+[[instances]]
+agents = [
+    "udp://{{agent}}"
+]
+{% if detail.version == 2 %}
+version = {{detail.version}}
+community = "{{detail.community}}"
+{% endif %}
+{% if detail.version == 3 %}
+version = {{detail.version}}
+sec_name = "{{detail.sec_name}}"
+auth_protocol = "{{detail.auth_protocol}}"
+auth_password = "{{detail.auth_password}}"
+priv_protocol = "{{detail.priv_protocol}}"
+priv_password = "{{detail.priv_password}}"
+sec_level = "{{detail.sec_level}}"
+{% endif %}
+timeout = "5s"
+retries = 3
+path = ["/usr/share/snmp/mibs"]
+translator = "gosmi"
+max_repetitions = 50
+
+[[instances.field]]
+name = "sysName"
+oid = "1.3.6.1.2.1.1.5.0"
+is_tag = true
+
+[[instances.table]]
+name = "interface"
+inherit_tags = ["sysName"]
+index_as_tag = true
+
+[[instances.table.field]]
+name = "ifIndex"
+oid = "1.3.6.1.2.1.2.2.1.1"
+is_tag = true
+
+[[instances.table.field]]
+name = "ifName"
+oid = "1.3.6.1.2.1.31.1.1.1.1"
+is_tag = true
+
+[[instances.table.field]]
+name = "ifDescr"
+oid = "1.3.6.1.2.1.2.2.1.2"
+is_tag = true
+
+[[instances.table.field]]
+name = "ifSpeed"
+oid = "1.3.6.1.2.1.2.2.1.5"
+# is_tag = true
+
+[[instances.table.field]]
+name = "ifAdminStatus"
+oid = "1.3.6.1.2.1.2.2.1.7"
+# is_tag = true
+
+[[instances.table.field]]
+name = "ifOperStatus"
+oid = "1.3.6.1.2.1.2.2.1.8"
+# is_tag = true
+
+[[instances.table.field]]
+name = "ifInDiscards"
+oid = "1.3.6.1.2.1.2.2.1.13"
+
+[[instances.table.field]]
+name = "ifInErrors"
+oid = "1.3.6.1.2.1.2.2.1.14"
+
+[[instances.table.field]]
+name = "ifOutDiscards"
+oid = "1.3.6.1.2.1.2.2.1.19"
+
+[[instances.table.field]]
+name = "ifOutErrors"
+oid = "1.3.6.1.2.1.2.2.1.20"
+
+[[instances.table.field]]
+name = "ifAlias"
+oid = "1.3.6.1.2.1.31.1.1.1.18"
+is_tag = true
+
+[[instances.table.field]]
+name = "ifHCInOctets"
+oid = "1.3.6.1.2.1.31.1.1.1.6"
+
+[[instances.table.field]]
+name = "ifHCOutOctets"
+oid = "1.3.6.1.2.1.31.1.1.1.10"
+
+{% endfor %}
+{% endfor %}

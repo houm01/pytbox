@@ -41,33 +41,36 @@ class BuildConfig:
             f.write(render_data)
 
     def ping(self):
-        instances = self.instances['ping']['instance']
-        render_data = ping_template.render(instances=instances)
-        target_dir = Path(self.output_dir) / 'input.ping'
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True, exist_ok=True)
-            
-        with open(Path(self.output_dir) / 'input.ping' / 'ping.toml', 'w', encoding='utf-8') as f:
-            f.write(render_data)
+        if self.instances.get('ping'):
+            instances = self.instances['ping']['instance']
+            render_data = ping_template.render(instances=instances)
+            target_dir = Path(self.output_dir) / 'input.ping'
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+                
+            with open(Path(self.output_dir) / 'input.ping' / 'ping.toml', 'w', encoding='utf-8') as f:
+                f.write(render_data)
 
     def prometheus(self):
-        instances = self.instances['prometheus']['urls']
-        render_data = prometheus_template.render(instances=instances)
-        target_dir = Path(self.output_dir) / 'input.prometheus'
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True, exist_ok=True)
-        with open(Path(self.output_dir) / 'input.prometheus' / 'prometheus.toml', 'w', encoding='utf-8') as f:
-            f.write(render_data)
+        if self.instances.get('prometheus'):
+            instances = self.instances['prometheus']['urls']
+            render_data = prometheus_template.render(instances=instances)
+            target_dir = Path(self.output_dir) / 'input.prometheus'
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+            with open(Path(self.output_dir) / 'input.prometheus' / 'prometheus.toml', 'w', encoding='utf-8') as f:
+                f.write(render_data)
 
     def vsphere(self):
-        template = self._get_template('input.vsphere/vsphere.toml.j2')
-        instances = self.instances['vsphere']['instance']
-        render_data = template.render(instances=instances)
-        target_dir = Path(self.output_dir) / 'input.vsphere'
-        if not target_dir.exists():
-            target_dir.mkdir(parents=True, exist_ok=True)
-        with open(Path(self.output_dir) / 'input.vsphere' / 'vsphere.toml', 'w', encoding='utf-8') as f:
-            f.write(render_data)
+        if self.instances.get('vsphere'):
+            template = self._get_template('input.vsphere/vsphere.toml.j2')
+            instances = self.instances['vsphere']['instance']
+            render_data = template.render(instances=instances)
+            target_dir = Path(self.output_dir) / 'input.vsphere'
+            if not target_dir.exists():
+                target_dir.mkdir(parents=True, exist_ok=True)
+            with open(Path(self.output_dir) / 'input.vsphere' / 'vsphere.toml', 'w', encoding='utf-8') as f:
+                f.write(render_data)
 
     def http_response(self):
         template = self._get_template('input.http_response/http_response.toml.j2')

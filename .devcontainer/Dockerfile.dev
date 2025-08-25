@@ -6,7 +6,8 @@ WORKDIR /app
 
 ENV PYTHONPATH=/app/automation \
     TZ=Asia/Shanghai \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    ENV=dev 
 
 # 修改为国内源
 COPY debian.sources /etc/apt/sources.list.d/debian.sources
