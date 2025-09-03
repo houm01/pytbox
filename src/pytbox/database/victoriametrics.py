@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
+import json
 from typing import Literal, Optional
 import requests
 from ..utils.response import ReturnResponse
+from ..utils.load_vm_devfile import load_dev_file
 
 
 class VictoriaMetrics:
@@ -16,13 +18,13 @@ class VictoriaMetrics:
             'Accept': 'application/json'
         })
         
-    def query(self, query: str) -> ReturnResponse:
+    def query(self, query: str, output_format: Literal['json']=None) -> ReturnResponse:
         '''
         查询指标数据
-        
+
         Args:
             query (str): 查询语句
-            
+
         Returns:
             dict: 查询结果
         '''
@@ -32,13 +34,32 @@ class VictoriaMetrics:
             timeout=self.timeout,
             params={"query": query}
         )
-        if r.json().get("status") == "success":
-            if r.json()['data']['result']:
-                return ReturnResponse(code=0, msg=f"[{query}] 查询成功!", data=r.json()['data']['result'])
+        res_json = r.json()
+        status = res_json.get("status")
+        result = res_json.get("data", {}).get("result", [])
+        is_json = output_format == 'json'
+
+        if status == "success":
+            if result:
+                code = 0
+                msg = f"[{query}] 查询成功!"
+                data = result
             else:
-                return ReturnResponse(code=2, msg=f"[{query}] 没有查询到结果", data=r.json())
+                code = 2
+                msg = f"[{query}] 没有查询到结果"
+                data = res_json
         else:
-            return ReturnResponse(code=1, msg=f"[{query}] 查询失败: {r.json().get('error')}", data=r.json())
+            code = 1
+            msg = f"[{query}] 查询失败: {res_json.get('error')}"
+            data = res_json
+
+        resp = ReturnResponse(code=code, msg=msg, data=data)
+
+        if is_json:
+            json_result = json.dumps(resp.__dict__, ensure_ascii=False)
+            return json_result
+        else:
+            return resp
 
     def get_labels(self, metric_name: str) -> ReturnResponse:
         url = f"{self.url}/api/v1/series?match[]={metric_name}"
@@ -49,7 +70,7 @@ class VictoriaMetrics:
         else:
             return ReturnResponse(code=1, msg=f"metric name: {metric_name} 查询失败")
 
-    def check_ping_result(self, target: str, last_minute: int=10) -> ReturnResponse:
+    def check_ping_result(self, target: str, last_minute: int=10, env: str='prod', dev_file: str='') -> ReturnResponse:
         '''
         检查ping结果
         '''
@@ -62,13 +83,18 @@ class VictoriaMetrics:
         if last_minute:
             query = query + f"[{last_minute}m]"
         
-        r = self.query(query=query)
+        if env == 'dev':
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=query)
+ 
         if r.code == 0:
             values = r.data[0]['values']
             if len(values) == 2 and values[1] == "0":
                 code = 0
                 msg = f"已检查 {target} 最近 {last_minute} 分钟是正常的!"
             else:
+                
                 if all(str(item[1]) == "1" for item in values):
                     code = 1
                     msg = f"已检查 {target} 最近 {last_minute} 分钟是异常的!"

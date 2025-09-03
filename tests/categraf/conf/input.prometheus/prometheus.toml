@@ -2,7 +2,7 @@
 
 [[instances]]
 urls = [
-    "http://10.200.12.202:9100"
+    "http://10.1.1.1:9100"
 ]
 
 url_label_key = "instance"

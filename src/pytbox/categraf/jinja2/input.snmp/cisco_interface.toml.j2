@@ -17,9 +17,9 @@ priv_protocol = "{{detail.priv_protocol}}"
 priv_password = "{{detail.priv_password}}"
 sec_level = "{{detail.sec_level}}"
 {% endif %}
-timeout = "5s"
+timeout = "{{config.timeout}}"
 retries = 3
-path = ["/usr/share/snmp/mibs"]
+path = ["{{config.path}}"]
 translator = "gosmi"
 max_repetitions = 50
 

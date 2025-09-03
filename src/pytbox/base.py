@@ -10,8 +10,11 @@ from pytbox.alert.alert_handler import AlertHandler
 from pytbox.log.logger import AppLogger
 from pytbox.win.ad import ADClient
 from pytbox.network.meraki import Meraki
+from pytbox.utils.env import get_env_by_os_environment
+from pytbox.vmware import VMwareClient
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
+
 
 def get_mongo(collection):
     return Mongo(
@@ -61,4 +64,13 @@ def get_logger(app):
 #     password=config['ad']['prod']['AD_PASSWORD']
 # )
 
+env = get_env_by_os_environment(check_key='ENV')
 meraki = Meraki(api_key=config['meraki']['api_key'], organization_id=config['meraki']['organization_id'])
+
+vmware_test = VMwareClient(
+    host=config['vmware']['test']['host'],
+    username=config['vmware']['test']['username'],
+    password=config['vmware']['test']['password'],
+    version=config['vmware']['test']['version'],
+    proxies=config['vmware']['test']['proxies']
+)

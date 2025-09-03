@@ -114,16 +114,11 @@ class BuildConfig:
                 device_templates = glob(str(jinja2_dir / f'{device_type}_*.toml.j2'))
                 if not device_templates:
                     continue
-                
                 for tmpl_path in device_templates:
                     tmpl_name = os.path.basename(tmpl_path)
-                    # 例如 h3c_system.toml.j2 -> h3c_system
                     base_name = tmpl_name.replace('.toml.j2', '')
-
                     template = self._get_template(f'input.snmp/{tmpl_name}')
-                    # 修复数据结构：模板期望的是数组，每个元素是字典
-                    # instances 是 [{"udp://10.1.1.1:161": {...}, "udp://10.1.1.2:161": {...}}, ...]
-                    render_data = template.render(instances=instances)
+                    render_data = template.render(instances=instances, config=self.instances['snmp']['config'])
 
                     target_dir = Path(self.output_dir) / 'input.snmp'
                     if not target_dir.exists():

@@ -9,7 +9,7 @@ version = 2
 community = "public"
 
 
-timeout = "5s"
+timeout = "120s"
 retries = 3
 path = ["/usr/share/snmp/mibs"]
 translator = "gosmi"
@@ -39,7 +39,7 @@ version = 2
 community = "public"
 
 
-timeout = "5s"
+timeout = "120s"
 retries = 3
 path = ["/usr/share/snmp/mibs"]
 translator = "gosmi"
@@ -74,7 +74,7 @@ priv_protocol = "AES"
 priv_password = "pass02"
 sec_level = "authPriv"
 
-timeout = "5s"
+timeout = "120s"
 retries = 3
 path = ["/usr/share/snmp/mibs"]
 translator = "gosmi"

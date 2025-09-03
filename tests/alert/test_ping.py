@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
 import pytest
-from pytbox.base import get_mongo, config, alert_handler, vm
+from pytbox.base import get_mongo, config, alert_handler, vm, env
 
 
 mongo_alert = get_mongo('alert_test')
 
 @pytest.mark.parametrize("target", ["121.46.237.185", "8.8.8.8"])
 def test_ping(target):
-    r = vm.check_ping_result(target=target, last_minute=config['alert']['trigger']['ping']['last_minute'])
+    env = 'dev'
+    r = vm.check_ping_result(target=target, last_minute=config['alert']['trigger']['ping']['last_minute'], env=env, dev_file='/workspaces/pytbox/tests/dev_file/1.json')
     if r.code == 1:
         alert_handler.send_alert(
             event_type='trigger',
@@ -39,5 +40,6 @@ def resolved():
 
 
 if __name__ == "__main__":
-    ping("121.46.237.185")
-    resolved()
+    test_ping("121.46.237.185")
+    
+    # resolved()

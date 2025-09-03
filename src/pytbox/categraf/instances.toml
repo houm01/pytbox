@@ -25,6 +25,9 @@
 "119.29.29.29_baidu.com" = { dns_server = "119.29.29.29", domains = "www.baidu.com", labels = { name = "x", env = "prod" } }
 
 [snmp]
+[snmp.config]
+timeout = '120s'
+path = "/usr/share/snmp/mibs"
 # 支持 h3c,huawei,cisco,ruijie
 [[snmp.instances.h3c]]
 "10.1.1.1:161" = { version = 2, community = "public" }

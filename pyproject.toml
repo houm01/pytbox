@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytbox"
-version = "0.1.1"
+version = "0.1.2"
 description = "A collection of Python integrations and utilities (Feishu, Dida365, VictoriaMetrics, ...)"
 authors = [{ name = "mingming hou", email = "houm01@foxmail.com" }]
 license = "MIT"
