@@ -254,9 +254,9 @@ class MessageEndpoint(Endpoint):
             body=payload
         )
         if r.code == 0:
-            return ReturnResponse(code=0, message=f"{message_id} 回复 emoji [{emoji_type}] 成功")
+            return ReturnResponse(code=0, msg=f"{message_id} 回复 emoji [{emoji_type}] 成功")
         else:
-            return ReturnResponse(code=1, message=f"{message_id} 回复 emoji [{emoji_type}] 失败")
+            return ReturnResponse(code=1, msg=f"{message_id} 回复 emoji [{emoji_type}] 失败")
 
 class BitableEndpoint(Endpoint):
     
@@ -432,10 +432,10 @@ class BitableEndpoint(Endpoint):
             resp = self.parent.request(path=f'/bitable/v1/apps/{app_token}/tables/{table_id}/records/{record_id}',
                                         method='PUT',
                                         body=payload)
-            return ReturnResponse(code=resp.code, message=f"记录已存在, 进行更新", data=resp.data)
+            return ReturnResponse(code=resp.code, msg=f"记录已存在, 进行更新", data=resp.data)
         else:
             resp = self.add_record(app_token, table_id, fields)
-            return ReturnResponse(code=resp.code, message=f"记录不存在, 进行创建", data=resp.data)
+            return ReturnResponse(code=resp.code, msg=f"记录不存在, 进行创建", data=resp.data)
 
     def query_name_by_record_id(self, app_token: str=None, table_id: str=None, field_names: list=None, record_id: str='', name: str=''):
         response = self.query_record(app_token=app_token, table_id=table_id, field_names=field_names)
@@ -967,9 +967,9 @@ class ExtensionsEndpoint(Endpoint):
                                    body=payload)
         if response.code == 0:
             if get == 'open_id':
-                return ReturnResponse(code=0, message=f'根据用户输入的 {user_input}, 获取用户信息成功', data=response.data['user_list'][0]['user_id'])
+                return ReturnResponse(code=0, msg=f'根据用户输入的 {user_input}, 获取用户信息成功', data=response.data['user_list'][0]['user_id'])
         else:
-            return ReturnResponse(code=response.code, message=f"获取时失败, 报错请见 data 字段", data=response.data)
+            return ReturnResponse(code=response.code, msg=f"获取时失败, 报错请见 data 字段", data=response.data)
     
     def format_rich_text(self, text: str, color: Literal['red', 'green', 'yellow', 'blue'], bold: bool=False):
         if bold:

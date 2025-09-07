@@ -73,6 +73,16 @@ class VictoriaMetrics:
     def check_ping_result(self, target: str, last_minute: int=10, env: str='prod', dev_file: str='') -> ReturnResponse:
         '''
         检查ping结果
+
+        Args:
+            target (str): 目标地址
+            last_minute (int, optional): 最近多少分钟. Defaults to 10.
+            env (str, optional): 环境. Defaults to 'prod'.
+            dev_file (str, optional): 开发文件. Defaults to ''.
+
+        Returns:
+            ReturnResponse: 
+                code = 0 正常, code = 1 异常, code = 2 没有查询到数据, 建议将其判断为正常
         '''
         if target:
             # 这里需要在字符串中保留 {}，同时插入 target，可以用双大括号转义

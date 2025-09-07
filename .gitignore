@@ -206,3 +206,6 @@ test-results/
 env.sh
 config_dev.toml
 base.py
+test_jira.py
+*.csv
+tests/*.csv
