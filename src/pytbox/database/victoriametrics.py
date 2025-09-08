@@ -18,7 +18,7 @@ class VictoriaMetrics:
             'Accept': 'application/json'
         })
         
-    def query(self, query: str, output_format: Literal['json']=None) -> ReturnResponse:
+    def query(self, query: str=None, output_format: Literal['json']=None) -> ReturnResponse:
         '''
         查询指标数据
 
@@ -61,6 +61,52 @@ class VictoriaMetrics:
         else:
             return resp
 
+    def query_range(self, query):
+        '''
+        查询指标数据
+
+        Args:
+            query (str): 查询语句
+
+        Returns:
+            dict: 查询结果
+        '''
+        url = f"{self.url}/prometheus/api/v1/query_range"
+
+        data = {
+            'query': query,
+            'start': '-1d',
+            'step': '1h'
+        }
+
+        r = requests.post(url, data=data, timeout=self.timeout)
+        res_json = r.json()
+        print(res_json)
+        # status = res_json.get("status")
+        # result = res_json.get("data", {}).get("result", [])
+        # is_json = output_format == 'json'
+
+        # if status == "success":
+        #     if result:
+        #         code = 0
+        #         msg = f"[{query}] 查询成功!"
+        #         data = result
+        #     else:
+        #         code = 2
+        #         msg = f"[{query}] 没有查询到结果"
+        #         data = res_json
+        # else:
+        #     code = 1
+        #     msg = f"[{query}] 查询失败: {res_json.get('error')}"
+        #     data = res_json
+
+        # resp = ReturnResponse(code=code, msg=msg, data=data)
+
+        # if is_json:
+        #     json_result = json.dumps(resp.__dict__, ensure_ascii=False)
+        #     return json_result
+        # else:
+        #     return resp
     def get_labels(self, metric_name: str) -> ReturnResponse:
         url = f"{self.url}/api/v1/series?match[]={metric_name}"
         response = requests.get(url, timeout=self.timeout)
@@ -104,7 +150,6 @@ class VictoriaMetrics:
                 code = 0
                 msg = f"已检查 {target} 最近 {last_minute} 分钟是正常的!"
             else:
-                
                 if all(str(item[1]) == "1" for item in values):
                     code = 1
                     msg = f"已检查 {target} 最近 {last_minute} 分钟是异常的!"
@@ -114,7 +159,6 @@ class VictoriaMetrics:
         elif r.code == 2:
             code = 2
             msg = f"没有查询到 {target} 最近 {last_minute} 分钟的ping结果!"
-        
         try:
             data = r.data[0]
         except KeyError:
@@ -147,3 +191,26 @@ class VictoriaMetrics:
         r = self.query(query)
         rate = r.data[0]['value'][1]
         return int(float(rate))
+    
+    def check_snmp_port_status(self, sysname: str=None, if_name: str=None, last_minute: int=5) -> ReturnResponse:
+        '''
+        查询端口状态
+        status code 可参考 SNMP 文件 https://mibbrowser.online/mibdb_search.php?mib=IF-MIB
+
+        Args:
+            sysname (_type_): 设备名称
+            if_name (_type_): _description_
+            last_minute (_type_): _description_
+
+        Returns:
+            ReturnResponse: 
+            code: 0, msg: , data: up,down
+        '''
+        q = f"""avg_over_time(snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{if_name}"}}[{last_minute}m])"""
+        r = self.query(query=q)
+        status_code = r.data[0]['value'][1]
+        if status_code == 1:
+            status = 'up'
+        else:
+            status = 'down'
+        return ReturnResponse(code=0, msg=f"{sysname} {if_name} 最近 {last_minute} 分钟端口状态为 {status}", data=status)

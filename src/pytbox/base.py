@@ -15,6 +15,8 @@ from pytbox.vmware import VMwareClient
 from pytbox.pyjira import PyJira
 from pytbox.mail.client import MailClient
 from pytbox.mail.alimail import AliMail
+from pytbox.alicloud.sls import AliCloudSls
+
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
 
@@ -53,6 +55,19 @@ def get_logger(app):
         mongo=get_mongo('alert_program')
     )
 
+def get_logger_sls(app):
+    return AppLogger(
+        app_name=app, 
+        enable_sls=True,
+        feishu=feishu,
+        dida=dida,
+        mongo=get_mongo('alert_program'),
+        sls_access_key_id=config['alicloud']['account1']['access_key_id'],
+        sls_access_key_secret=config['alicloud']['account1']['access_key_secret'],
+        sls_project=config['alicloud']['account1']['project'],
+        sls_logstore=config['alicloud']['account1']['logstore']
+    )
+
 # ad_dev = ADClient(
 #     server=config['ad']['dev']['AD_SERVER'],
 #     base_dn=config['ad']['dev']['BASE_DN'],
@@ -86,3 +101,10 @@ pyjira = PyJira(
 mail_163 = MailClient(mail_address=config['mail']['163']['mail_address'], password=config['mail']['163']['password'])
 mail_qq = MailClient(mail_address=config['mail']['qq']['mail_address'], password=config['mail']['qq']['password'])
 ali_mail = AliMail(mail_address=config['mail']['aliyun']['mail_address'], client_id=config['mail']['aliyun']['client_id'], client_secret=config['mail']['aliyun']['client_secret'])
+
+sls = AliCloudSls(
+    access_key_id=config['alicloud']['account1']['access_key_id'],
+    access_key_secret=config['alicloud']['account1']['access_key_secret'],
+    project=config['alicloud']['account1']['project'],
+    logstore=config['alicloud']['account1']['logstore']
+)

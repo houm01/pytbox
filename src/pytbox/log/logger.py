@@ -9,7 +9,7 @@ from ..database.mongo import Mongo
 from ..feishu.client import Client as FeishuClient
 from ..utils.timeutils import TimeUtils
 from ..dida365 import Dida365
-
+from ..alicloud.sls import AliCloudSls
 
 logger.remove()
 logger.add(sys.stdout, colorize=True, format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <level>{message}</level>")
@@ -31,7 +31,6 @@ class AppLogger:
                  feishu: FeishuClient=None,
                  dida: Dida365=None,
                  enable_sls: bool=False,
-                 sls_url: str=None,
                  sls_access_key_id: str=None,
                  sls_access_key_secret: str=None,
                  sls_project: str=None,
@@ -49,10 +48,17 @@ class AppLogger:
         self.stream = stream
         self.victorialog = Victorialog(url=victorialog_url)
         self.enable_victorialog = enable_victorialog
+        self.enable_sls = enable_sls
         self.mongo = mongo
         self.feishu = feishu
         self.dida = dida
-    
+        self.sls = AliCloudSls(
+            access_key_id=sls_access_key_id,
+            access_key_secret=sls_access_key_secret,
+            project=sls_project,
+            logstore=sls_logstore
+        )
+
     def _get_caller_info(self) -> tuple[str, int, str]:
         """
         获取调用者信息
@@ -78,6 +84,9 @@ class AppLogger:
         logger.debug(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             self.victorialog.send_program_log(stream=self.stream, level="DEBUG", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
+        if self.enable_sls:
+            self.sls.put_logs(level="DEBUG", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
+ 
     
     def info(self, message: str='', feishu_notify: bool=False):
         """记录信息级别日志"""
@@ -85,22 +94,28 @@ class AppLogger:
         logger.info(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             r = self.victorialog.send_program_log(stream=self.stream, level="INFO", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
+        if self.enable_sls:
+            self.sls.put_logs(level="INFO", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
         if feishu_notify:
             self.feishu(message)
-    
+        
     def warning(self, message: str):
         """记录警告级别日志"""
         caller_filename, caller_lineno, caller_function, call_full_filename = self._get_caller_info()
         logger.warning(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             self.victorialog.send_program_log(stream=self.stream, level="WARN", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
-    
+        if self.enable_sls:
+            self.sls.put_logs(level="WARN", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
+            
     def error(self, message: str):
         """记录错误级别日志"""
         caller_filename, caller_lineno, caller_function, call_full_filename = self._get_caller_info()
         logger.error(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             self.victorialog.send_program_log(stream=self.stream, level="ERROR", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
+        if self.enable_sls:
+            self.sls.put_logs(level="ERROR", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
         
         if self.feishu:
             existing_message = self.mongo.collection.find_one({"message": message}, sort=[("time", -1)])
@@ -150,7 +165,8 @@ class AppLogger:
         logger.critical(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         if self.enable_victorialog:
             self.victorialog.send_program_log(stream=self.stream, level="CRITICAL", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
-
+        if self.enable_sls:
+            self.sls.put_logs(level="CRITICAL", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
 
 # 使用示例
 if __name__ == "__main__":
