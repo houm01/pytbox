@@ -16,6 +16,7 @@ from pytbox.pyjira import PyJira
 from pytbox.mail.client import MailClient
 from pytbox.mail.alimail import AliMail
 from pytbox.alicloud.sls import AliCloudSls
+from pytbox.utils.cronjob import cronjob_counter
 
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
@@ -108,3 +109,7 @@ sls = AliCloudSls(
     project=config['alicloud']['account1']['project'],
     logstore=config['alicloud']['account1']['logstore']
 )
+
+
+def get_cronjob_counter(app_type='', app='', comment=None, schedule_interval=None, schedule_cron=None):
+    return cronjob_counter(vm=vm, log=get_logger('cronjob_counter'), app_type=app_type, app=app, comment=comment, schedule_interval=schedule_interval, schedule_cron=schedule_cron)

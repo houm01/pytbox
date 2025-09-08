@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-
 from ..database.victoriametrics import VictoriaMetrics
 from ..lib.load_config import load_config
 

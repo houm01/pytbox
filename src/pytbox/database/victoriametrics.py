@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
+import time
 import json
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, List
 import requests
 from ..utils.response import ReturnResponse
 from ..utils.load_vm_devfile import load_dev_file
@@ -9,7 +10,7 @@ from ..utils.load_vm_devfile import load_dev_file
 
 class VictoriaMetrics:
     
-    def __init__(self, url: str='', timeout: int=3) -> None:
+    def __init__(self, url: str='', timeout: int=3, env: str='prod') -> None:
         self.url = url
         self.timeout = timeout
         self.session = requests.Session()
@@ -17,7 +18,44 @@ class VictoriaMetrics:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         })
+        self.env = env
+
+    def insert(self, metric_name: str = '', labels: Dict[str, str] = None, 
+               value: List[float] = None, timestamp: int = None) -> ReturnResponse:
+        """插入指标数据。
         
+        Args:
+            metric_name: 指标名称
+            labels: 标签字典
+            value: 值列表
+            timestamp: 时间戳（毫秒），默认为当前时间
+            
+        Raises:
+            requests.RequestException: 当请求失败时抛出
+        """
+        if labels is None:
+            labels = {}
+        if value is None:
+            value = 1
+        if timestamp is None:
+            timestamp = int(time.time() * 1000)
+            
+        url = f"{self.url}/api/v1/import"
+        data = {
+            "metric": {
+                "__name__": metric_name,
+                **labels
+            },
+            "values": [value],
+            "timestamps": [timestamp]
+        }
+        
+        try:
+            response = requests.post(url, json=data, timeout=self.timeout)
+            return ReturnResponse(code=0, msg=f"数据插入成功，状态码: {response.status_code}, metric_name: {metric_name}, labels: {labels}, value: {value}, timestamp: {timestamp}")
+        except requests.RequestException as e:
+            return ReturnResponse(code=1, msg=f"数据插入失败: {e}")
+
     def query(self, query: str=None, output_format: Literal['json']=None) -> ReturnResponse:
         '''
         查询指标数据
@@ -208,9 +246,67 @@ class VictoriaMetrics:
         '''
         q = f"""avg_over_time(snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{if_name}"}}[{last_minute}m])"""
         r = self.query(query=q)
-        status_code = r.data[0]['value'][1]
-        if status_code == 1:
-            status = 'up'
+        if r.code == 0:
+            status_code = r.data[0]['value'][1]
+            if status_code == 1:
+                status = 'up'
+            else:
+                status = 'down'
+            return ReturnResponse(code=0, msg=f"{sysname} {if_name} 最近 {last_minute} 分钟端口状态为 {status}", data=status)
         else:
-            status = 'down'
-        return ReturnResponse(code=0, msg=f"{sysname} {if_name} 最近 {last_minute} 分钟端口状态为 {status}", data=status)
+            return r
+
+    def insert_cronjob_run_status(self, 
+                                  app_type: Literal['alert', 'meraki', 'other']='other', 
+                                  app: str='', 
+                                  status_code: Literal[0, 1]=1, 
+                                  comment: str=None, 
+                                  schedule_interval: str=None, 
+                                  schedule_cron: str=None
+                                ) -> ReturnResponse:
+        labels = {
+            "app": app,
+            "env": self.env,
+        }
+        if app_type:
+            labels['app_type'] = app_type
+        if comment:
+            labels['comment'] = comment
+            
+        if schedule_interval:
+            labels['schedule_type'] = 'interval'
+            labels['schedule_interval'] = schedule_interval
+            
+        if schedule_cron:
+            labels['schedule_type'] = 'cron'
+            labels['schedule_cron'] = schedule_cron
+            
+        r = self.insert(metric_name="cronjob_run_status", labels=labels, value=status_code)
+        return r
+    
+    def insert_cronjob_duration_seconds(self, 
+                                        app_type: Literal['alert', 'meraki', 'other']='other', 
+                                        app: str='', 
+                                        duration_seconds: float=None, 
+                                        comment: str=None, 
+                                        schedule_interval: str=None, 
+                                        schedule_cron: str=None
+                                    ) -> ReturnResponse:
+        labels = {
+            "app": app,
+            "env": self.env
+        }
+        if app_type:
+            labels['app_type'] = app_type
+        if comment:
+            labels['comment'] = comment
+
+        if schedule_interval:
+            labels['schedule_type'] = 'interval'
+            labels['schedule_interval'] = schedule_interval
+            
+        if schedule_cron:
+            labels['schedule_type'] = 'cron'
+            labels['schedule_cron'] = schedule_cron
+        r = self.insert(metric_name="cronjob_run_duration_seconds", labels=labels, value=duration_seconds)
+        return r
