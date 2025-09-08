@@ -247,7 +247,7 @@ class VictoriaMetrics:
         q = f"""avg_over_time(snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{if_name}"}}[{last_minute}m])"""
         r = self.query(query=q)
         if r.code == 0:
-            status_code = r.data[0]['value'][1]
+            status_code = int(r.data[0]['value'][1])
             if status_code == 1:
                 status = 'up'
             else:
