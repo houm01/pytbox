@@ -14,6 +14,7 @@ from pytbox.utils.env import get_env_by_os_environment
 from pytbox.vmware import VMwareClient
 from pytbox.pyjira import PyJira
 from pytbox.mail.client import MailClient
+from pytbox.mail.alimail import AliMail
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
 
@@ -84,3 +85,4 @@ pyjira = PyJira(
 
 mail_163 = MailClient(mail_address=config['mail']['163']['mail_address'], password=config['mail']['163']['password'])
 mail_qq = MailClient(mail_address=config['mail']['qq']['mail_address'], password=config['mail']['qq']['password'])
+ali_mail = AliMail(mail_address=config['mail']['aliyun']['mail_address'], client_id=config['mail']['aliyun']['client_id'], client_secret=config['mail']['aliyun']['client_secret'])

@@ -287,7 +287,7 @@ class TimeUtils:
         return int(time.time()) * 1000
 
     @staticmethod
-    def convert_str_to_datetime(time_str: str, app: Literal['lg_alert_trigger', 'lg_alert_resolved', 'mongo']='lg_alert_trigger') -> datetime.datetime:
+    def convert_str_to_datetime(time_str: str, app: Literal['lg_alert_trigger', 'lg_alert_resolved', 'mongo', 'alimail']='lg_alert_trigger') -> datetime.datetime:
         """
         将字符串转换为datetime对象
 
@@ -305,7 +305,10 @@ class TimeUtils:
         elif app == 'mongo':
             time_obj = datetime.datetime.fromisoformat(time_str.replace('Z', '+00:00'))
             return time_obj  # 已经包含时区信息，直接返回
-        
+        elif app == 'alimail':
+            time_obj = datetime.datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ")
+            time_obj = time_obj + datetime.timedelta(hours=8)
+            # return time_obj
         # 对于没有时区信息的时间对象，设置为Asia/Shanghai时区
         time_with_tz = time_obj.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
         return time_with_tz
