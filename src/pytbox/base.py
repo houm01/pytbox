@@ -8,7 +8,6 @@ from pytbox.feishu.client import Client as FeishuClient
 from pytbox.dida365 import Dida365
 from pytbox.alert.alert_handler import AlertHandler
 from pytbox.log.logger import AppLogger
-from pytbox.win.ad import ADClient
 from pytbox.network.meraki import Meraki
 from pytbox.utils.env import get_env_by_os_environment
 from pytbox.vmware import VMwareClient
@@ -109,7 +108,6 @@ sls = AliCloudSls(
     project=config['alicloud']['account1']['project'],
     logstore=config['alicloud']['account1']['logstore']
 )
-
 
 def get_cronjob_counter(app_type='', app='', comment=None, schedule_interval=None, schedule_cron=None):
     return cronjob_counter(vm=vm, log=get_logger('cronjob_counter'), app_type=app_type, app=app, comment=comment, schedule_interval=schedule_interval, schedule_cron=schedule_cron)

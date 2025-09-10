@@ -27,6 +27,10 @@ class MailClient:
         elif 'foxmail.com' in mail_address:
             self.smtp_address = 'smtp.qq.com'
             self.imap_address = 'imap.qq.com'
+        
+        elif 'mail' in mail_address and 'cn' in mail_address:
+            self.smtp_address = "smtpdm.aliyun.com"
+            self.imap_address = ""
             
         else:
             raise ValueError(f'不支持的邮箱地址: {mail_address}')

@@ -230,7 +230,7 @@ class VictoriaMetrics:
         rate = r.data[0]['value'][1]
         return int(float(rate))
     
-    def check_snmp_port_status(self, sysname: str=None, if_name: str=None, last_minute: int=5) -> ReturnResponse:
+    def check_snmp_port_status(self, sysname: str=None, if_name: str=None, last_minute: int=5, dev_file: str=None) -> ReturnResponse:
         '''
         查询端口状态
         status code 可参考 SNMP 文件 https://mibbrowser.online/mibdb_search.php?mib=IF-MIB
@@ -245,7 +245,10 @@ class VictoriaMetrics:
             code: 0, msg: , data: up,down
         '''
         q = f"""avg_over_time(snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{if_name}"}}[{last_minute}m])"""
-        r = self.query(query=q)
+        if self.env == 'dev':
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=q)
         if r.code == 0:
             status_code = int(r.data[0]['value'][1])
             if status_code == 1:

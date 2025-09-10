@@ -7,6 +7,7 @@ from ..database.mongo import Mongo
 from ..feishu.client import Client as FeishuClient
 from ..dida365 import Dida365
 from ..utils.timeutils import TimeUtils
+from ..mail.client import MailClient
 
 
 class AlertHandler:
@@ -15,12 +16,16 @@ class AlertHandler:
                  config: dict=None,
                  mongo_client: Mongo=None,
                  feishu_client: FeishuClient=None,
-                 dida_client: Dida365=None
+                 dida_client: Dida365=None,
+                 mail_client: MailClient=None,
+                 env: Literal['dev', 'prod']='prod'
             ):
         self.config = config
         self.mongo = mongo_client
         self.feishu = feishu_client
         self.dida = dida_client
+        self.mail = mail_client
+        self.env = env
 
     def send_alert(self, 
                  event_id: str=None,
@@ -34,7 +39,7 @@ class AlertHandler:
                  suggestion: str='',
                  troubleshot: str='暂无',
                  mongo_id: str=None
-                ):
+            ):
         
         if not event_id:
             event_id = str(uuid.uuid4())
@@ -62,11 +67,11 @@ class AlertHandler:
                 update = {"$set": { "resolved_time": event_time}}
                 self.mongo.collection.update_one(filter_doc, update)
                 alarm_time = self.mongo.collection.find_one(filter_doc, {'event_time': 1})['event_time']
-    
+            
             content = [
                 f'**事件名称**: {event_name}',
                 f'**告警时间**: {TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0) if event_type == "trigger" else TimeUtils.convert_timeobj_to_str(timeobj=alarm_time, timezone_offset=8)}',
-                f'**事件内容**: {event_content}',
+                f'**事件内容**: {event_content + " 已恢复" if event_type == "resolved" else event_content}',
                 f'**告警实例**: {entity_name}',
                 f'**建议**: {suggestion}',
                 f'**故障排查**: {troubleshot}',
@@ -78,17 +83,30 @@ class AlertHandler:
     
             if self.config['feishu']['enable_alert']:
                 self.feishu.extensions.send_message_notify(
+                    receive_id=self.config['feishu']['receive_id'],
                     color='red' if event_type == "trigger" else 'green',
-                    title=event_content,
+                    title=event_content + " 已恢复" if event_type == "resolved" else event_content,
                     priority=priority,
-                    sub_title="",
+                    sub_title='测试告警, 无需处理' if self.env == 'dev' else '',
                     content='\n'.join(content)
                 )
+            
+            if self.config['mail']['enable_mail']:
+                if event_type == "trigger":
+                    self.mail.send_mail(
+                        receiver=[self.config['mail']['mail_address']],
+                        subject=f'{self.config['mail']['subject_trigger']}, {event_content}',
+                        contents=f'event_content:{event_content}, alarm_time: {str(event_time)}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}'
+                    )
+                else:
+                    self.mail.send_mail(
+                        receiver=[self.config['mail']['mail_address']],
+                        subject=f'{self.config['mail']['subject_resolved']}, {event_content}', 
+                        contents=f'event_content:{event_content}, alarm_time: {str(TimeUtils.get_now_time_mongo())}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}')
             
             if self.config['dida']['enable_alert']:
                 if event_type == "trigger":
                     res = self.dida.task_create(
-                        
                         project_id=self.config['dida']['alert_project_id'],
                         title=event_content,
                         content='\n'.join(content),

@@ -80,7 +80,7 @@ class Mongo:
         alarm_list = []
         for result in results:
             duration_minute = '持续 ' + str(int((result['resolved_time'] - result['event_time']).total_seconds() / 60)) + ' 分钟'
-            alarm_list.append('触发告警: ' + TimeUtils.convert_timeobj_to_str(timeobj=result['event_time']) + ' ' + duration_minute)
+            alarm_list.append('触发时间: ' + TimeUtils.convert_timeobj_to_str(timeobj=result['event_time']) + ' ' + duration_minute)
 
         alarm_str = '\n'.join(alarm_list)
         
