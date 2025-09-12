@@ -43,6 +43,7 @@ dida = Dida365(
     access_token=config['dida']['access_token']
 )
 
+
 alert_handler = AlertHandler(config=config, mongo_client=get_mongo('alert_test'), feishu_client=feishu, dida_client=dida)
 
 def get_logger(app):
@@ -98,9 +99,9 @@ pyjira = PyJira(
     token=config['jira']['token']
 )
 
-mail_163 = MailClient(mail_address=config['mail']['163']['mail_address'], password=config['mail']['163']['password'])
-mail_qq = MailClient(mail_address=config['mail']['qq']['mail_address'], password=config['mail']['qq']['password'])
-ali_mail = AliMail(mail_address=config['mail']['aliyun']['mail_address'], client_id=config['mail']['aliyun']['client_id'], client_secret=config['mail']['aliyun']['client_secret'])
+# mail_163 = MailClient(mail_address=config['mail']['163']['mail_address'], password=config['mail']['163']['password'])
+# mail_qq = MailClient(mail_address=config['mail']['qq']['mail_address'], password=config['mail']['qq']['password'])
+# ali_mail = AliMail(mail_address=config['mail']['aliyun']['mail_address'], client_id=config['mail']['aliyun']['client_id'], client_secret=config['mail']['aliyun']['client_secret'])
 
 sls = AliCloudSls(
     access_key_id=config['alicloud']['account1']['access_key_id'],

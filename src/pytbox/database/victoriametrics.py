@@ -230,6 +230,37 @@ class VictoriaMetrics:
         rate = r.data[0]['value'][1]
         return int(float(rate))
     
+    def check_interface_avg_rate(self,
+                                 direction: Literal['in', 'out'],
+                                 sysname: str, 
+                                 ifname:str, 
+                                 last_hours: Optional[int] = 24,
+                                 last_minutes: Optional[int] = 5,
+                                ) -> ReturnResponse:
+        '''
+        _summary_
+
+        Args:
+            direction (Literal[&#39;in&#39;, &#39;out&#39;]): _description_
+            sysname (str): _description_
+            ifname (str): _description_
+            last_hours (Optional[int], optional): _description_. Defaults to 24.
+            last_minutes (Optional[int], optional): _description_. Defaults to 5.
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+        if direction == 'in':
+            query = f'avg_over_time(rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8 [{last_hours}h:]) / 1e6'
+        else:
+            query = f'avg_over_time(rate(snmp_interface_ifHCOutOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8 [{last_hours}h:]) / 1e6'
+        r = self.query(query)
+        try:
+            rate = r.data[0]['value'][1]
+            return ReturnResponse(code=0, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时平均速率为 {round(float(rate), 2)} Mbit/s", data=round(float(rate), 2))
+        except KeyError:
+            return ReturnResponse(code=1, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时平均速率为 0 Mbit/s")
+    
     def check_snmp_port_status(self, sysname: str=None, if_name: str=None, last_minute: int=5, dev_file: str=None) -> ReturnResponse:
         '''
         查询端口状态

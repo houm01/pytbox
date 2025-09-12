@@ -20,6 +20,7 @@ class AlertHandler:
                  mail_client: MailClient=None,
                  env: Literal['dev', 'prod']='prod'
             ):
+     
         self.config = config
         self.mongo = mongo_client
         self.feishu = feishu_client
@@ -95,14 +96,15 @@ class AlertHandler:
                 if event_type == "trigger":
                     self.mail.send_mail(
                         receiver=[self.config['mail']['mail_address']],
-                        subject=f'{self.config['mail']['subject_trigger']}, {event_content}',
-                        contents=f'event_content:{event_content}, alarm_time: {str(event_time)}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}'
+                        subject=f"{self.config['mail']['subject_trigger']}, {event_content}",
+                        contents=f"event_content:{event_content}, alarm_time: {str(event_time)}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}"
                     )
                 else:
                     self.mail.send_mail(
                         receiver=[self.config['mail']['mail_address']],
-                        subject=f'{self.config['mail']['subject_resolved']}, {event_content}', 
-                        contents=f'event_content:{event_content}, alarm_time: {str(TimeUtils.get_now_time_mongo())}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}')
+                        subject=f"{self.config['mail']['subject_resolved']}, {event_content}",
+                        contents=f"event_content:{event_content}, alarm_time: {str(TimeUtils.get_now_time_mongo())}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}"
+                    )
             
             if self.config['dida']['enable_alert']:
                 if event_type == "trigger":

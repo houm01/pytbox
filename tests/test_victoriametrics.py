@@ -21,8 +21,14 @@ def test_check_snmp_port_status():
     r = vm.check_snmp_port_status(sysname="shylf-prod-coresw-ce6820-182", if_name="10GE1/0/47", last_minute=10)
     print(r)
 
+
+r = vm.check_interface_avg_rate(direction='in', sysname='whcq-prod-coresw-s6720-254', ifname='XGigabitEthernet0/0/47', last_hours=24, last_minutes=5)
+print(r)
+
 if __name__ == "__main__":
     # test_get_labels()
     # test_query()
     # test_check_ping_result()
-    test_check_snmp_port_status()
+    # test_check_snmp_port_status()
+    # test_check_interface_avg_rate()
+    pass
