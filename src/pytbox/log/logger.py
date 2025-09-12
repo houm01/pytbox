@@ -152,12 +152,13 @@ class AppLogger:
                     f"**function_name**: {caller_function}"
                 ]
                 
-                self.dida.task_create(
-                    project_id="65e87d2b3e73517c2cdd9d63",
-                    title=f"自动化脚本告警: {self.app_name}",
-                    content="\n".join(dida_content_list),
-                    tags=['L-程序告警', 't-问题处理']
-                )
+                if self.dida:
+                    self.dida.task_create(
+                        project_id="65e87d2b3e73517c2cdd9d63",
+                        title=f"自动化脚本告警: {self.app_name}",
+                        content="\n".join(dida_content_list),
+                        tags=['L-程序告警', 't-问题处理']
+                    )
         
     def critical(self, message: str):
         """记录严重错误级别日志"""
