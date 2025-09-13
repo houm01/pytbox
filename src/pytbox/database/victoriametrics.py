@@ -251,9 +251,9 @@ class VictoriaMetrics:
             ReturnResponse: _description_
         '''
         if direction == 'in':
-            query = f'avg_over_time(rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8 [{last_hours}h:]) / 1e6'
+            query = f'avg_over_time((rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8) [{last_hours}h:]) / 1e6'
         else:
-            query = f'avg_over_time(rate(snmp_interface_ifHCOutOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8 [{last_hours}h:]) / 1e6'
+            query = f'avg_over_time((rate(snmp_interface_ifHCOutOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8) [{last_hours}h:]) / 1e6'
         r = self.query(query)
         try:
             rate = r.data[0]['value'][1]
@@ -282,9 +282,9 @@ class VictoriaMetrics:
             ReturnResponse: _description_
         '''
         if direction == 'in':
-            query = f'max_over_time(rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8 [{last_hours}h:]) / 1e6'
+            query = f'max_over_time((rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8) [{last_hours}h:]) / 1e6'
         else:
-            query = f'max_over_time(rate(snmp_interface_ifHCOutOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8 [{last_hours}h:]) / 1e6'
+            query = f'max_over_time((rate(snmp_interface_ifHCOutOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8) [{last_hours}h:]) / 1e6'
         r = self.query(query)
         try:
             rate = r.data[0]['value'][1]
