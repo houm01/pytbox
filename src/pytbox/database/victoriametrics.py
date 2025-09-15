@@ -204,6 +204,28 @@ class VictoriaMetrics:
         
         return ReturnResponse(code=code, msg=msg, data=data)
 
+    def check_unreachable_ping_result(self, dev_file: str='') -> ReturnResponse:
+        '''
+        检查ping结果
+
+        Args:
+            target (str): 目标地址
+            last_minute (int, optional): 最近多少分钟. Defaults to 10.
+            env (str, optional): 环境. Defaults to 'prod'.
+            dev_file (str, optional): 开发文件. Defaults to ''.
+
+        Returns:
+            ReturnResponse: 
+                code = 0 正常, code = 1 异常, code = 2 没有查询到数据, 建议将其判断为正常
+        '''
+        query = "ping_result_code == 1"
+        
+        if self.env == 'dev':
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=query)
+        return r
+
     def check_interface_rate(self,
                              direction: Literal['in', 'out'],
                              sysName: str, 

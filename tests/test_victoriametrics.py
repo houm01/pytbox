@@ -22,11 +22,15 @@ def test_check_snmp_port_status():
     print(r)
 
 
-r = vm.check_interface_avg_rate(direction='in', sysname='whcq-prod-coresw-s6720-254', ifname='XGigabitEthernet0/0/47', last_hours=24*30, last_minutes=5)
+# r = vm.check_interface_avg_rate(direction='in', sysname='whcq-prod-coresw-s6720-254', ifname='XGigabitEthernet0/0/47', last_hours=24*30, last_minutes=5)
+# print(r)
+
+# r = vm.check_interface_max_rate(direction='in', sysname='whcq-prod-coresw-s6720-254', ifname='XGigabitEthernet0/0/47', last_hours=24*30, last_minutes=5)
+# print(r)
+
+r = vm.check_unreachable_ping_result()
 print(r)
 
-r = vm.check_interface_max_rate(direction='in', sysname='whcq-prod-coresw-s6720-254', ifname='XGigabitEthernet0/0/47', last_hours=24*30, last_minutes=5)
-print(r)
 
 if __name__ == "__main__":
     # test_get_labels()
