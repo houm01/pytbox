@@ -89,7 +89,10 @@ class PyJira:
             dict: 任务信息或账户ID
         """
         url = f"{self.base_url}/rest/api/{self.rest_version}/issue/{issue_id_or_key}"
+        print(url)
         r = self.session.get(url, headers=self.headers, timeout=self.timeout)
+        
+        print(r.text)
         
         # 移除所有 key 以 customfield_ 开头且后面跟数字的字段
         fields = r.json()['fields']
@@ -313,6 +316,7 @@ class PyJira:
     
     def issue_search(self, jql: str, max_results: int = 50, fields: Optional[List[str]] = None) -> ReturnResponse:
         """使用JQL搜索JIRA任务
+        https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/#api-rest-api-3-search-jql-get
         
         Args:
             jql: JQL查询字符串
@@ -322,25 +326,28 @@ class PyJira:
         Returns:
             ReturnResponse: 包含任务列表的响应数据
         """
-        url = f"{self.base_url}/rest/api/3/search"
+        url = f"{self.base_url}/rest/api/3/search/jql"
         
-        # 构建请求体
-        payload = {
+        # 构建查询参数
+        params = {
             "jql": jql,
             "maxResults": max_results,
             "startAt": 0
         }
         
-        # 如果指定了字段，添加到请求体中
-        if fields:
-            payload["fields"] = fields
+        # 如果指定了字段，添加到查询参数中
+        if isinstance(fields, list):
+            params["fields"] = ",".join(fields)
+        else:
+            params["fields"] = fields
         
-        r = self.session.post(url, headers=self.headers, json=payload, timeout=self.timeout)
+        r = self.session.get(url, headers=self.headers, params=params, timeout=self.timeout)
         
         if r.status_code == 200:
             return ReturnResponse(code=0, msg='', data=r.json())
         else:
             return ReturnResponse(code=1, msg=f'获取 issue 失败, status code: {r.status_code}, 报错: {r.text}')
+
 
     def get_boards(self) -> ReturnResponse:
         """获取所有看板信息并打印

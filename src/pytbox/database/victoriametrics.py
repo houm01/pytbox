@@ -168,41 +168,19 @@ class VictoriaMetrics:
             ReturnResponse: 
                 code = 0 正常, code = 1 异常, code = 2 没有查询到数据, 建议将其判断为正常
         '''
-        if target:
-            # 这里需要在字符串中保留 {}，同时插入 target，可以用双大括号转义
-            query = f"ping_result_code{{target='{target}'}}"
-        else:
-            query = "ping_result_code"
-        
-        if last_minute:
-            query = query + f"[{last_minute}m]"
-        
-        if env == 'dev':
+        query = f'avg_over_time((ping_result_code{{target="{target}"}})[{last_minute}m])'
+        if self.env == 'dev':
             r = load_dev_file(dev_file)
         else:
             r = self.query(query=query)
- 
         if r.code == 0:
-            values = r.data[0]['values']
-            if len(values) == 2 and values[1] == "0":
-                code = 0
-                msg = f"已检查 {target} 最近 {last_minute} 分钟是正常的!"
+            value = r.data[0]['value'][1]
+            if value == '0':
+                return ReturnResponse(code=0, msg=f"已检查 {target} 最近 {last_minute} 分钟是正常的!", data=r.data)
             else:
-                if all(str(item[1]) == "1" for item in values):
-                    code = 1
-                    msg = f"已检查 {target} 最近 {last_minute} 分钟是异常的!"
-                else:
-                    code = 0
-                    msg = f"已检查 {target} 最近 {last_minute} 分钟是正常的!"
-        elif r.code == 2:
-            code = 2
-            msg = f"没有查询到 {target} 最近 {last_minute} 分钟的ping结果!"
-        try:
-            data = r.data[0]
-        except KeyError:
-            data = r.data
-        
-        return ReturnResponse(code=code, msg=msg, data=data)
+                return ReturnResponse(code=1, msg=f"已检查 {target} 最近 {last_minute} 分钟是异常的!", data=r.data)
+        else:
+            return r
 
     def check_unreachable_ping_result(self, dev_file: str='') -> ReturnResponse:
         '''

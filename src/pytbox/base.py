@@ -16,6 +16,8 @@ from pytbox.mail.client import MailClient
 from pytbox.mail.alimail import AliMail
 from pytbox.alicloud.sls import AliCloudSls
 from pytbox.utils.cronjob import cronjob_counter
+from pytbox.notion import Notion
+from pytbox.mingdao import Mingdao
 
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
@@ -96,6 +98,7 @@ vmware_test = VMwareClient(
 
 pyjira = PyJira(
     base_url=config['jira']['base_url'],
+    username=config['jira']['username'],
     token=config['jira']['token']
 )
 
@@ -112,3 +115,7 @@ sls = AliCloudSls(
 
 def get_cronjob_counter(app_type='', app='', comment=None, schedule_interval=None, schedule_cron=None):
     return cronjob_counter(vm=vm, log=get_logger('cronjob_counter'), app_type=app_type, app=app, comment=comment, schedule_interval=schedule_interval, schedule_cron=schedule_cron)
+
+
+notion = Notion(token=config['notion']['api_secrets'], proxy=config['notion']['proxy'])
+mingdao = Mingdao(app_key=config['mingdao']['app_key'], sign=config['mingdao']['sign'])
