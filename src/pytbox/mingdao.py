@@ -12,7 +12,7 @@ class Mingdao:
     _summary_
     '''
     def __init__(self, app_key: str=None, sign: str=None, timeout: int=5):
-        self.base_url = "https://api.mingdao.com/"
+        self.base_url = "https://api.mingdao.com"
         self.headers = {
             'Content-Type': 'application/json;charset=UTF-8',
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
@@ -20,7 +20,7 @@ class Mingdao:
         self.timeout = timeout
         self.app_key = app_key
         self.sign = sign
-    
+
     def _build_api_request(self, api_url: str, method: Literal['GET', 'POST'], params: dict=None, body: dict=None, api_version: Literal['v1', 'v2']='v2'):
         body['appKey'] = self.app_key
         body['sign'] = self.sign
@@ -116,6 +116,7 @@ class Mingdao:
                         parse_control_id: bool=False,
                         page_size: int=100,
                     ):
+        
         filters = []
         if project_value:
             filters.append({

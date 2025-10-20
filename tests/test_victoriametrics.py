@@ -22,7 +22,7 @@ def test_check_snmp_port_status():
     print(r)
 
 
-test_check_ping_result()
+# test_check_ping_result()
 
 # r = vm.check_interface_avg_rate(direction='in', sysname='whcq-prod-coresw-s6720-254', ifname='XGigabitEthernet0/0/47', last_hours=24*30, last_minutes=5)
 # print(r)
@@ -40,4 +40,8 @@ if __name__ == "__main__":
     # test_check_ping_result()
     # test_check_snmp_port_status()
     # test_check_interface_avg_rate()
-    pass
+    # pass
+    # print(r)
+    # cpu_usage = vm.get_vmware_cpu_usage(vcenter="10.200.10.20", esxhostname='10.200.10.10')
+    memory_usage = vm.get_vmware_memory_usage(vcenter="10.200.10.20", esxhostname='10.200.10.10')
+    print(memory_usage)

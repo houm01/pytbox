@@ -375,3 +375,29 @@ class VictoriaMetrics:
             labels['schedule_cron'] = schedule_cron
         r = self.insert(metric_name="cronjob_run_duration_seconds", labels=labels, value=duration_seconds)
         return r
+    
+    def get_vmware_esxhostnames(self, vcenter: str=None) -> list:
+        '''
+        _summary_
+        '''
+        esxhostnames = []
+        query = f'vsphere_host_sys_uptime_latest{{vcenter="{vcenter}"}}'
+        metrics = self.query(query=query).data
+        for metric in metrics:
+            esxhostname = metric['metric']['esxhostname']
+            esxhostnames.append(esxhostname)
+        return esxhostnames
+    
+    def get_vmware_cpu_usage(self, vcenter: str=None, esxhostname: str=None) -> float:
+        '''
+        _summary_
+        '''
+        query = f'vsphere_host_cpu_usage_average{{vcenter="{vcenter}", esxhostname="{esxhostname}"}}'
+        return self.query(query=query).data[0]['value'][1]
+    
+    def get_vmware_memory_usage(self, vcenter: str=None, esxhostname: str=None) -> float:
+        '''
+        _summary_
+        '''
+        query = f'vsphere_host_mem_usage_average{{vcenter="{vcenter}", esxhostname="{esxhostname}"}}'
+        return self.query(query=query).data[0]['value'][1]

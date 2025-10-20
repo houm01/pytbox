@@ -25,10 +25,10 @@ def test_get_control_id():
 
 def test_get_work_record():
     r = mingdao.get_work_record(
-        worksheet_id="64a77d4277649ebe61a9cb45", 
-        project_control_id="64a822be5760cf37a93d07ff", 
-        project_value="4b97c271-4997-4230-90be-28d5285f609b", 
-        complete_date_control_id="64a7e18c77649ebe61aad968", 
+        worksheet_id="64a77d4277649ebe61a9cb45",
+        project_control_id="64a822be5760cf37a93d07ff",
+        project_value="4b97c271-4997-4230-90be-28d5285f609b",
+        complete_date_control_id="64a7e18c77649ebe61aad968",
         complete_date="上个月"
     )
     print(r)
