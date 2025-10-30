@@ -4,6 +4,7 @@ from typing import Any, Literal
 import requests
 from ..utils.response import ReturnResponse
 
+
 class Meraki:
     '''
     Meraki Client
@@ -167,3 +168,82 @@ class Meraki:
             timeout=self.timeout
         )
         return ReturnResponse(code=0, msg=f"获取设备健康状态成功", data=r.json())
+    
+    def reboot_device(self, serial: str) -> ReturnResponse:
+        '''
+        该接口 60s 只能执行一次
+
+        Args:
+            serial (str): _description_
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+        r = requests.post(
+            url=f"{self.base_url}/devices/{serial}/reboot",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        if r.status_code == 202 and r.json()['success'] == True:
+            return ReturnResponse(code=0, msg=f"重启 {serial} 成功", data=r.json())
+
+        try:
+            error_msg = r.json()['error']
+        except KeyError:
+            error_msg = r.json()
+        return ReturnResponse(code=1, msg=f"重启 {serial} 失败, 报错 {error_msg}", data=None)
+    
+    def get_alerts(self):
+        # from datetime import datetime, timedelta
+        params = {}
+        params['tsStart'] = "2025-10-20T00:00:00Z"
+        params['tsEnd'] = "2025-10-30T00:00:00Z"
+        # # 获取昨天0:00的时间戳（秒）
+        # yesterday = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        # ts_start = int(yesterday.timestamp()) * 1000
+        # params['tsStart'] = str(ts_start)
+        # print(params)
+        r = requests.get(
+            url=f"{self.base_url}/organizations/{self.organization_id}/assurance/alerts",
+            headers=self.headers,
+            timeout=self.timeout,
+            params=params
+        )
+        for i in r.json():
+            print(i)
+        # return ReturnResponse(code=0, msg="获取告警成功", data=r.json())
+    
+    def get_network_events(self, network_id):
+        params = {}
+        params['productType'] = "wireless"
+        
+        print(params)
+        r = requests.get(
+            url=f"{self.base_url}/networks/{network_id}/events",
+            headers=self.headers,
+            timeout=self.timeout,
+            params=params
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"获取网络事件成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"获取网络事件失败: {r.status_code} - {r.text}", data=None)
+    
+    def get_wireless_failcounter(self, network_id: str, timespan: int=5*60, serial: str=None):
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-network-wireless-failed-connections/
+        '''
+        params = {}
+        params['timespan'] = timespan
+        if serial:
+            params['serial'] = serial
+            
+        r = requests.get(
+            url=f"{self.base_url}/networks/{network_id}/wireless/failedConnections",
+            headers=self.headers,
+            timeout=self.timeout,
+            params=params
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"获取无线失败连接成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"获取无线失败连接失败: {r.status_code} - {r.text}", data=None)
+    

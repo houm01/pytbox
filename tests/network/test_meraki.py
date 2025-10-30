@@ -35,5 +35,49 @@ def test_get_device_availabilities():
     log.info(r.data)
     assert r.code == 0
 
+def test_reboot_device():
+    r = meraki.reboot_device(serial=config['meraki']['pytest']['serial'])
+    print(r)
+    # assert r.code == 0
+
+def test_get_alert():
+    r = meraki.get_alerts()
+    # print(r)
+
+def test_get_network_events():
+    r = meraki.get_network_events(network_id=config['meraki']['pytest']['network_id'])
+    for event in r.data['events']:
+        if 'auth' in event['type']:
+            print(event)
+        # print(event['type'], event['description'])
+        # print(event['description'])
+
+def test_get_wireless_failcounter():
+    r = meraki.get_devices(network_ids=config['meraki']['pytest']['network_id'])
+    for i in r.data:
+        if i['productType'] == 'wireless':
+            print(i['serial'])
+            r = meraki.get_wireless_failcounter(network_id=config['meraki']['pytest']['network_id'], timespan=60*60, serial=i['serial'])
+            if len(r.data) > 2:
+            
+                r = meraki.reboot_device(serial=i['serial'])
+                print(r)
+        # print(i)
+        # r = meraki.get_wireless_failcounter(network_id=config['meraki']['pytest']['network_id'], timespan=60*60)
+    # for i in r.data:
+    #     if '802.1X auth fail' in i['type']:
+    #         print(i)
+    #         s
+        # print(i['type'])
+        # s
+    # print(r.data)
+    # assert r.code == 0
+
+
 if __name__ == '__main__':
-    test_get_networks()
+    # test_get_network_events()
+    # test_get_networks()
+    # test_reboot_device()
+    # test_get_alert()
+    # print(meraki.get_network_id_by_name('45173'))
+    test_get_wireless_failcounter()
