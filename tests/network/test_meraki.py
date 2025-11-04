@@ -73,6 +73,11 @@ def test_get_wireless_failcounter():
     # print(r.data)
     # assert r.code == 0
 
+def test_claim_device():
+    serials = config['meraki']['pytest']['serials']
+    r = meraki.claim_network_devices(network_id=config['meraki']['pytest']['network_id'], serials=serials)
+    print(r)
+
 
 if __name__ == '__main__':
     # test_get_network_events()
@@ -80,4 +85,5 @@ if __name__ == '__main__':
     # test_reboot_device()
     # test_get_alert()
     # print(meraki.get_network_id_by_name('45173'))
-    test_get_wireless_failcounter()
+    # test_get_wireless_failcounter()
+    test_claim_device()

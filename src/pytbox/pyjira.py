@@ -314,13 +314,13 @@ class PyJira:
         else:
             return ReturnResponse(code=1, msg=f'添加评论 [{comment}] 失败, 返回值: {r.text}', data=r.json())
     
-    def issue_search(self, jql: str, max_results: int = 50, fields: Optional[List[str]] = None) -> ReturnResponse:
-        """使用JQL搜索JIRA任务
+    def issue_search(self, jql: str, max_results: int = 1000, fields: Optional[List[str]] = None) -> ReturnResponse:
+        """使用JQL搜索JIRA任务（支持自动分页获取所有结果）
         https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/#api-rest-api-3-search-jql-get
         
         Args:
             jql: JQL查询字符串
-            max_results: 最大返回结果数，默认50
+            max_results: 最大返回结果数，默认1000。会自动分页获取
             fields: 需要返回的字段列表，默认返回所有字段
             
         Returns:
@@ -328,25 +328,72 @@ class PyJira:
         """
         url = f"{self.base_url}/rest/api/3/search/jql"
         
-        # 构建查询参数
-        params = {
-            "jql": jql,
-            "maxResults": max_results,
-            "startAt": 0
+        # Jira API 单次请求最多返回100条，需要分页
+        page_size = 100
+        all_issues = []
+        seen_keys = set()  # 用于去重
+        next_page_token = None
+        page_count = 0
+        
+        while len(all_issues) < max_results:
+            page_count += 1
+            
+            # 构建查询参数
+            params = {
+                "jql": jql,
+                "maxResults": page_size
+            }
+            
+            # 如果有下一页的 token，添加到参数中（按文档使用 nextPageToken 参数名）
+            if next_page_token:
+                params["nextPageToken"] = next_page_token
+            
+            # 如果指定了字段，添加到查询参数中
+            if isinstance(fields, list):
+                params["fields"] = ",".join(fields)
+            else:
+                params["fields"] = fields
+            
+            r = self.session.get(url, headers=self.headers, params=params, timeout=self.timeout)
+            
+            if r.status_code != 200:
+                return ReturnResponse(code=1, msg=f'获取 issue 失败, status code: {r.status_code}, 报错: {r.text}')
+            
+            data = r.json()
+            issues = data.get('issues', [])
+            
+            if not issues:
+                break
+            
+            # 去重：只添加未见过的 issue
+            new_issues_count = 0
+            for issue in issues:
+                issue_key = issue.get('key')
+                if issue_key and issue_key not in seen_keys:
+                    all_issues.append(issue)
+                    seen_keys.add(issue_key)
+                    new_issues_count += 1
+                
+            # 检查是否是最后一页
+            is_last = data.get('isLast', True)
+            next_page_token = data.get('nextPageToken')
+            
+            # 如果是最后一页或没有新数据，退出循环
+            if is_last or new_issues_count == 0:
+                break
+        
+        # 如果获取的数据超过 max_results，截断到指定数量
+        if len(all_issues) > max_results:
+            all_issues = all_issues[:max_results]
+        
+        # 返回合并后的结果
+        result_data = {
+            'issues': all_issues,
+            'total': len(all_issues),
+            'startAt': 0
         }
         
-        # 如果指定了字段，添加到查询参数中
-        if isinstance(fields, list):
-            params["fields"] = ",".join(fields)
-        else:
-            params["fields"] = fields
-        
-        r = self.session.get(url, headers=self.headers, params=params, timeout=self.timeout)
-        
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg='', data=r.json())
-        else:
-            return ReturnResponse(code=1, msg=f'获取 issue 失败, status code: {r.status_code}, 报错: {r.text}')
+        return ReturnResponse(code=0, msg=f'成功获取 {len(all_issues)} 个唯一 issue（共请求 {page_count} 页）', data=result_data)
 
 
     def get_boards(self) -> ReturnResponse:
