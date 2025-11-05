@@ -168,7 +168,8 @@ class VictoriaMetrics:
             ReturnResponse: 
                 code = 0 正常, code = 1 异常, code = 2 没有查询到数据, 建议将其判断为正常
         '''
-        query = f'avg_over_time((ping_result_code{{target="{target}"}})[{last_minute}m])'
+        query = f'min_over_time(ping_result_code{{target="{target}"}}[{last_minute}m])'
+        # query = f'avg_over_time((ping_result_code{{target="{target}"}})[{last_minute}m])'
         if self.env == 'dev':
             r = load_dev_file(dev_file)
         else:

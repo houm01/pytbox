@@ -9,7 +9,7 @@ def test_query():
     print(r)
 
 def test_check_ping_result():
-    r = vm.check_ping_result(target='10.20.3.106', last_minute=10)
+    r = vm.check_ping_result(target='10.20.3.20', last_minute=10)
     print(r)
 
 def test_get_labels():
@@ -43,5 +43,6 @@ if __name__ == "__main__":
     # pass
     # print(r)
     # cpu_usage = vm.get_vmware_cpu_usage(vcenter="10.200.10.20", esxhostname='10.200.10.10')
-    memory_usage = vm.get_vmware_memory_usage(vcenter="10.200.10.20", esxhostname='10.200.10.10')
-    print(memory_usage)
+    # memory_usage = vm.get_vmware_memory_usage(vcenter="10.200.10.20", esxhostname='10.200.10.10')
+    # print(memory_usage)
+    test_check_ping_result()
