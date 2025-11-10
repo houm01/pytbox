@@ -120,24 +120,6 @@ class TimeUtils:
                 dt = datetime.datetime.strptime(timestr_fixed, "%Y-%m-%dT%H:%M:%S%z")
         # 返回秒级时间戳
         return int(dt.timestamp()) * 1000
-    
-    @staticmethod
-    def convert_str_to_datetime_lg_backup(time_str: str):
-        """
-        将 '7/10/2025 3:52:43 PM' 这种格式的时间字符串转换为时间戳（秒级）。
-
-        Args:
-            time_str (str): 时间字符串，格式如 '7/10/2025 3:52:43 PM'
-
-        Returns:
-            int: 时间戳（秒级）
-        """
-        if time_str is None:
-            return None
-        # 先将字符串转换为 datetime 对象
-        dt = datetime.datetime.strptime(time_str, "%m/%d/%Y %I:%M:%S %p")
-        # 返回秒级时间戳
-        return int(dt.timestamp()) * 1000
         
     @staticmethod
     def convert_timestamp_to_str(timestamp: int, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S.000Z']='%Y-%m-%d %H:%M:%S', timezone_offset: int=8):
@@ -286,32 +268,6 @@ class TimeUtils:
     def get_today_timestamp() -> int:
         return int(time.time()) * 1000
 
-    @staticmethod
-    def convert_str_to_datetime(time_str: str, app: Literal['lg_alert_trigger', 'lg_alert_resolved', 'mongo', 'alimail']='lg_alert_trigger') -> datetime.datetime:
-        """
-        将字符串转换为datetime对象
-
-        Args:
-            time_str (str): 时间字符串
-            app (Literal['lg_alert_trigger', 'lg_alert_resolved', 'mongo'], optional): 应用类型. Defaults to 'lg_alert_trigger'.
-
-        Returns:
-            datetime.datetime: 带时区信息的datetime对象
-        """
-        if app == 'lg_alert_trigger':
-            time_obj = datetime.datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-        elif app == 'lg_alert_resolved':
-            time_obj = datetime.datetime.strptime(time_str, "%Y年%m月%d日 %H:%M:%S")
-        elif app == 'mongo':
-            time_obj = datetime.datetime.fromisoformat(time_str.replace('Z', '+00:00'))
-            return time_obj  # 已经包含时区信息，直接返回
-        elif app == 'alimail':
-            time_obj = datetime.datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%SZ")
-            time_obj = time_obj + datetime.timedelta(hours=8)
-            # return time_obj
-        # 对于没有时区信息的时间对象，设置为Asia/Shanghai时区
-        time_with_tz = time_obj.replace(tzinfo=ZoneInfo("Asia/Shanghai"))
-        return time_with_tz
 
     @staticmethod
     def convert_timeobj_to_str(timeobj: str=None, timezone_offset: int=8, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S'):
@@ -515,21 +471,6 @@ class TimeUtils:
         return now.weekday() + 1 + offset
     
     @staticmethod
-    def get_week_of_year(customer: Literal['lululemon', 'other']='other') -> tuple[int, int]:
-        '''
-        获取今天是哪一年的第几周
-        
-        Returns:
-            tuple[int, int]: 返回一个元组，包含(年份, 周数)
-        '''
-        now = datetime.datetime.now()
-        # isocalendar()方法返回一个元组，包含年份、周数和周几
-        _year, week, _ = now.isocalendar()
-        if customer == 'lululemon':
-            week = week - 5
-        return _year, week
-
-    @staticmethod
     def get_last_month_start_and_end_time() -> tuple[datetime.datetime, datetime.datetime]:
         '''
         获取上个月的开始和结束时间
@@ -548,3 +489,17 @@ class TimeUtils:
         end_time = first_day_of_current_month - datetime.timedelta(days=1)
         end_time = end_time.replace(hour=23, minute=59, second=59, microsecond=0)
         return start_time.strftime("%Y-%m-%dT%H:%M:%SZ"), end_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+    
+    @staticmethod
+    def convert_rfc3339_to_unix_ms(ts_str: str) -> int:
+        """
+        将 RFC3339 格式的时间字符串转换为毫秒级时间戳
+
+        Args:
+            ts_str (str): RFC3339 格式的时间字符串
+
+        Returns:
+            int: 毫秒级时间戳
+        """
+        dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return int(dt.timestamp() * 1000)

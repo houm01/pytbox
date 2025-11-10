@@ -500,9 +500,21 @@ class Meraki:
             timeout=self.timeout
         )
         if r.status_code == 200:
-            return ReturnResponse(code=0, msg=f"获取 SSID 成功", data=r.json())
+            return ReturnResponse(code=0, msg="获取 SSID 成功", data=r.json())
         return ReturnResponse(code=1, msg=f"获取 SSID 失败: {r.status_code} - {r.text}", data=None)
     
+    def get_ssid_by_number(self, network_id, ssid_number):
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-network-wireless-ssid-by-number/
+        '''
+        r = requests.get(
+            url=f"{self.base_url}/networks/{network_id}/wireless/ssids/{ssid_number}",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return r.json()['name']
+
     def update_ssid(self, network_id, ssid_number, body):
         '''
         https://developer.cisco.com/meraki/api-v1/update-network-wireless-ssid/

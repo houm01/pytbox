@@ -85,5 +85,5 @@ if __name__ == '__main__':
     # test_reboot_device()
     # test_get_alert()
     # print(meraki.get_network_id_by_name('45173'))
-    # test_get_wireless_failcounter()
-    test_claim_device()
+    test_get_wireless_failcounter()
+    # test_claim_device()
