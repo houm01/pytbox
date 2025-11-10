@@ -97,7 +97,10 @@ class AppLogger:
         if self.enable_sls:
             self.sls.put_logs(level="INFO", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
         if feishu_notify:
-            self.feishu(message)
+            self.feishu.extensions.send_message_notify(
+                title=f"自动化脚本告警: {self.app_name}",
+                content=message
+            )
         
     def warning(self, message: str):
         """记录警告级别日志"""
