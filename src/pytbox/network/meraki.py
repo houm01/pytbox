@@ -2,6 +2,8 @@
 
 from typing import Any, Literal
 import requests
+import time
+from datetime import datetime, timezone, timedelta
 from ..utils.response import ReturnResponse
 
 
@@ -9,7 +11,42 @@ class Meraki:
     '''
     Meraki Client
     '''    
-    def __init__(self, api_key: str=None, organization_id: str=None, timeout: int=10, region: Literal['global', 'china']='china'):
+    def __init__(self,
+                 api_key: str=None,
+                 organization_id: str=None,
+                 timeout: int=10,
+                 region: Literal['global', 'china']='china',
+                 retry_max_retries: int=5,
+                 retry_backoff_factor: float=1.0,
+                 retry_on_status: tuple[int, ...]=(429, 500, 502, 503, 504)):
+        '''
+        Meraki API 客户端
+        
+        Args:
+            api_key: Meraki API Key
+            organization_id: 组织 ID
+            timeout: 单次 HTTP 请求超时时间（秒）
+            region: 接口区域，'china' 或 'global'
+            retry_max_retries:
+                - 最大尝试次数（包含首次请求）。例如设为 5，表示“首发 + 最多重试 4 次”。
+                - 用于在遇到限流(429)或临时性错误(5xx/网络波动/超时)时的上限保护，避免无限重试。
+            retry_backoff_factor:
+                - 指数退避的基数，实际等待时间为 backoff_factor × (2 ** attempt) 秒，attempt 从 0 开始。
+                - 例：factor=1.0 -> 等待序列 1s、2s、4s、8s、16s……
+                - 若响应为 429 且带有 Retry-After 头，将优先使用该头的秒数；没有该头时才使用指数退避。
+                - 建议：常规读取/监控 1.0～1.5；批量变更 1.5～2.0（更温和，降低撞限概率）。
+            retry_on_status:
+                - 会触发重试的 HTTP 状态码集合。默认值为 (429, 500, 502, 503, 504)：
+                  - 429：命中 Meraki 限流，需等待后重试（优先使用 Retry-After）。
+                  - 5xx：一般为临时性错误，按指数退避重试。
+        
+        Notes:
+            - 429（API 限流）时，优先读取响应头 Retry-After 等待指定秒数；若无该头，则按指数退避计算等待。
+            - 该客户端还会对网络异常（如超时、连接错误）进行指数退避重试，次数受 retry_max_retries 限制。
+            - Meraki 官方限流与配额说明参见：
+              https://developer.cisco.com/meraki/api-v1/rate-limit/
+              概要：每组织稳态 10 req/s，2 秒内最多约 30 次突发；每源 IP 100 req/s。
+        '''
         if not api_key:
             raise ValueError("api_key is required")
         if not organization_id:
@@ -25,34 +62,99 @@ class Meraki:
         }
         self.organization_id = organization_id
         self.timeout = timeout
+        # 请求重试相关默认配置
+        self.retry_max_retries = retry_max_retries
+        self.retry_backoff_factor = retry_backoff_factor
+        self.retry_on_status = retry_on_status
+
+    def _request(self,
+                 method: Literal['GET', 'POST', 'PUT', 'DELETE'],
+                 url: str,
+                 max_retries: int | None = None,
+                 backoff_factor: float | None = None,
+                 retry_on: tuple[int, ...] | None = None,
+                 **kwargs) -> ReturnResponse:
+        """
+        通用请求方法，处理 Meraki API 限流与暂时性错误的重试。
+        - 429: 优先使用 Retry-After 头；缺失则按指数退避
+        - 5xx/网络错误: 指数退避
+        """
+        # 使用实例级默认配置，支持调用时临时覆盖
+        if max_retries is None:
+            max_retries = self.retry_max_retries
+        if backoff_factor is None:
+            backoff_factor = self.retry_backoff_factor
+        if retry_on is None:
+            retry_on = self.retry_on_status
+        last_exc: Exception | None = None
+        resp: requests.Response | None = None
+        for attempt in range(max_retries):
+            try:
+                resp = requests.request(method, url, **kwargs)
+                if resp.status_code in retry_on:
+                    if resp.status_code == 429:
+                        retry_after = resp.headers.get("Retry-After")
+                        if retry_after:
+                            try:
+                                sleep_s = float(retry_after)
+                            except ValueError:
+                                sleep_s = backoff_factor * (2 ** attempt)
+                        else:
+                            sleep_s = backoff_factor * (2 ** attempt)
+                    else:
+                        sleep_s = backoff_factor * (2 ** attempt)
+                    time.sleep(sleep_s)
+                    continue
+                if 200 <= resp.status_code < 300:
+                    try:
+                        data = resp.json()
+                    except ValueError:
+                        data = resp.text
+                    return ReturnResponse(code=0, msg="OK", data=data)
+                return ReturnResponse(code=1, msg=f"{resp.status_code} - {resp.text}", data=None)
+            except (requests.Timeout, requests.ReadTimeout, requests.ConnectionError) as e:
+                last_exc = e
+                time.sleep(backoff_factor * (2 ** attempt))
+                continue
+        if resp is not None:
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+            return ReturnResponse(code=1, msg=f"{resp.status_code} - {resp.text}", data=data)
+        if last_exc:
+            return ReturnResponse(code=1, msg=str(last_exc), data=None)
+        return ReturnResponse(code=1, msg="Request failed after retries", data=None)
 
     def get_organizations(self) -> ReturnResponse:
         '''
         https://developer.cisco.com/meraki/api-v1/get-organizations/
         '''
-        r = requests.get(
+        r = self._request(
+            "GET",
             f"{self.base_url}/organizations",
             headers=self.headers,
             timeout=self.timeout
         )
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg=f"获取组织成功", data=r.json())
-        return ReturnResponse(code=1, msg=f"获取组织失败: {r.status_code} {r.text}")
+        if r.code == 0:
+            return ReturnResponse(code=0, msg=f"获取组织成功", data=r.data)
+        return ReturnResponse(code=1, msg=f"获取组织失败: {r.msg}")
 
     def get_api_requests(self, timespan: int=5*60) -> ReturnResponse:
         
         params = {}
         params['timespan'] = timespan
         
-        r = requests.get(
+        r = self._request(
+            "GET",
             url=f"{self.base_url}/organizations/{self.organization_id}/apiRequests",
             headers=self.headers,
             params=params,
             timeout=self.timeout
         )
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg='获取 API 请求数量成功', data=r.json())
-        return ReturnResponse(code=1, msg=f"获取 API 请求失败: {r.status_code} - {r.text}", data=None)
+        if r.code == 0:
+            return ReturnResponse(code=0, msg='获取 API 请求数量成功', data=r.data)
+        return ReturnResponse(code=1, msg=f"获取 API 请求失败: {r.msg}", data=None)
 
     def get_networks(self, tags: list[str]=None) -> ReturnResponse:
         '''
@@ -68,15 +170,18 @@ class Meraki:
         if tags:
             params['tags[]'] = tags
         
-        r = requests.get(
+        r = self._request(
+            "GET",
             f"{self.base_url}/organizations/{self.organization_id}/networks",
             headers=self.headers,
             params=params,
             timeout=self.timeout
         )
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg=f"获取到 {len(r.json())} 个网络", data=r.json())
-        return ReturnResponse(code=1, msg=f"获取网络失败: {r.status_code} {r.text}")
+        if r.code == 0:
+            data = r.data
+            size = len(data) if isinstance(data, list) else 0
+            return ReturnResponse(code=0, msg=f"获取到 {size} 个网络", data=data)
+        return ReturnResponse(code=1, msg=f"获取网络失败: {r.msg}")
 
     def get_network_id_by_name(self, name: str) -> str | None:
         '''
@@ -129,15 +234,18 @@ class Meraki:
             else:
                 params['networkIds[]'] = network_ids
             
-        r = requests.get(
+        r = self._request(
+            "GET",
             f"{self.base_url}/organizations/{self.organization_id}/inventory/devices", 
             headers=self.headers,
             params=params,
             timeout=self.timeout
         )
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg=f"获取到 {len(r.json())} 个设备", data=r.json())
-        return ReturnResponse(code=1, msg=f"获取设备失败: {r.status_code} {r.text}")
+        if r.code == 0:
+            data = r.data
+            size = len(data) if isinstance(data, list) else 0
+            return ReturnResponse(code=0, msg=f"获取到 {size} 个设备", data=data)
+        return ReturnResponse(code=1, msg=f"获取设备失败: {r.msg}")
 
     def get_device_detail(self, serial: str) -> ReturnResponse:
         '''
@@ -168,16 +276,18 @@ class Meraki:
                     'floorPlanId': '00000'
                 }
         '''
-        r = requests.get(
+        r = self._request(
+            "GET",
             f"{self.base_url}/devices/{serial}",
             headers=self.headers,
             timeout=self.timeout
         )
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg=f"获取设备详情成功: {r.json()}", data=r.json())
-        elif r.status_code == 404:
+        if r.code == 0:
+            return ReturnResponse(code=0, msg=f"获取设备详情成功", data=r.data)
+        # 兼容历史约定：404 映射为 code=3
+        if isinstance(r.msg, str) and r.msg.startswith("404"):
             return ReturnResponse(code=3, msg=f"设备 {serial} 还未添加过", data=None)
-        return ReturnResponse(code=1, msg=f"获取设备详情失败: {r.status_code} - {r.text}", data=None)
+        return ReturnResponse(code=1, msg=f"获取设备详情失败: {r.msg}", data=None)
 
     def get_device_availability(self, network_id: list=None,
                                   status: Literal['online', 'offline', 'dormant', 'alerting']=None,
@@ -327,21 +437,263 @@ class Meraki:
             print(i)
         # return ReturnResponse(code=0, msg="获取告警成功", data=r.json())
     
-    def get_network_events(self, network_id):
-        params = {}
-        params['productType'] = "wireless"
-        
-        print(params)
-        r = requests.get(
-            url=f"{self.base_url}/networks/{network_id}/events",
-            headers=self.headers,
-            timeout=self.timeout,
-            params=params
-        )
-        if r.status_code == 200:
-            return ReturnResponse(code=0, msg=f"获取网络事件成功", data=r.json())
-        return ReturnResponse(code=1, msg=f"获取网络事件失败: {r.status_code} - {r.text}", data=None)
+    def timestamp_to_iso8601(self, timestamp: int) -> str:
+        return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
+    def get_network_events(self, 
+                           network_id, 
+                           product_type: Literal['wireless', 'switch']=None, 
+                           serial: str=None, 
+                           device_name: str=None,
+                           last_minute: int=5,
+                           perpage: int=100,
+                           included_event_types: list=None
+                        ) -> ReturnResponse:
+        '''
+        拉取最近 N 分钟内的网络事件，自动按 Link 头翻页（参考 111.py 实现）。
+
+        Args:
+            network_id: 网络 ID
+            product_type: 设备类型过滤（无线/交换：'wireless'/'switch'），多产品网络建议必填
+            serial: 设备序列号过滤
+            device_name: 设备名称过滤
+            last_minute: 最近 N 分钟（默认 5）
+            perpage: 每页返回条数（3-1000，默认 100）
+            included_event_types: 事件类型字符串列表（需与接口返回的 eventTypes 完全匹配）
+                - 注意：必须传"事件类型标识"的精确字符串，而不是人类可读描述
+                - 建议先调用 get_event_types(network_id) 获取可用类型，再选择其子集传入
+                - 传参编码方式为 includedEventTypes[]（本方法已代为处理）
+                - 常用认证/802.1X/Radius 相关示例（不同网络可用集合可能不同，以 get_event_types 返回为准）：
+                    [
+                        "8021x_auth",
+                        "8021x_eap_success",
+                        "8021x_eap_failure",
+                        "8021x_radius_timeout",
+                        "8021x_client_timeout",
+                        "8021x_guest_auth",
+                        "8021x_critical_auth",
+                        "8021x_deauth",
+                        "8021x_client_deauth",
+                        "radius_mac_auth",
+                        "radius_mab_timeout",
+                        "radius_dynamic_vlan_assignment",
+                        "radius_invalid_group_policy",
+                        "radius_invalid_vlan_name",
+                        "radius_proxy_tls_success",
+                        "radius_proxy_tls_fail"
+                    ]
+
+        Returns:
+            ReturnResponse: data 结构与 Meraki API 一致，包含 message/pageStartAt/pageEndAt/events
+        '''
+        # 计算时间窗口（UTC）
+        t1_dt = datetime.now(tz=timezone.utc)
+        t0_dt = t1_dt - timedelta(minutes=last_minute)
+        
+        # 基于 endingBefore 的手动翻页：
+        # - 首次请求使用 t0/t1（限定窗口）
+        # - 随后使用 endingBefore=上一页最旧事件时间，持续向更旧时间翻页，直到越过 t0 或无更多事件
+        base_params: dict[str, Any] = {
+            'perPage': max(3, min(int(perpage), 1000))
+        }
+        if product_type:
+            base_params['productType'] = product_type
+        if serial:
+            base_params['deviceSerial'] = serial
+        if device_name:
+            base_params['deviceName'] = device_name
+        if isinstance(included_event_types, list) and included_event_types:
+            base_params['includedEventTypes[]'] = included_event_types
+
+        all_events: list[dict] = []
+        url = f"{self.base_url}/networks/{network_id}/events"
+        page = 0
+        current_ending_before: datetime | None = None
+
+        while True:
+            page += 1
+            # 组装本次请求参数
+            params: dict[str, Any] = dict(base_params)
+            if page == 1:
+                params['t0'] = t0_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                params['t1'] = t1_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                # 第二页及后续：改用 endingBefore，且不再传 t1，避免与分页游标冲突
+                if current_ending_before is None:
+                    break
+                params['t0'] = t0_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                params['endingBefore'] = current_ending_before.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            # 带重试的请求
+            attempt = 0
+            max_retries = self.retry_max_retries
+            while True:
+                attempt += 1
+                try:
+                    resp = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+                    status = resp.status_code
+                    if status == 429 or 500 <= status < 600:
+                        if attempt > max_retries:
+                            return ReturnResponse(code=1, msg=f"获取网络事件失败（多次重试后仍为 {status}）", data=None)
+                        retry_after = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+                        if retry_after:
+                            try:
+                                delay = float(retry_after)
+                            except ValueError:
+                                delay = 1.0 * attempt
+                        else:
+                            delay = 1.0 * attempt
+                        time.sleep(delay)
+                        continue
+                    resp.raise_for_status()
+                    break
+                except (requests.Timeout, requests.ReadTimeout, requests.ConnectionError) as e:
+                    if attempt > max_retries:
+                        return ReturnResponse(code=1, msg=f"获取网络事件失败: {str(e)}", data=None)
+                    time.sleep(1.0 * attempt)
+                    continue
+
+            body = resp.json()
+            page_events = body.get("events", [])
+            if not isinstance(page_events, list):
+                page_events = []
+
+            # 本地时间过滤
+            filtered_events = []
+            oldest_dt_on_page: datetime | None = None
+            for ev in page_events:
+                occurred_at_str = ev.get("occurredAt")
+                if not occurred_at_str:
+                    continue
+                try:
+                    occurred_dt = datetime.fromisoformat(occurred_at_str.replace("Z", "+00:00"))
+                except Exception:
+                    continue
+                if oldest_dt_on_page is None or occurred_dt < oldest_dt_on_page:
+                    oldest_dt_on_page = occurred_dt
+                if t0_dt <= occurred_dt <= t1_dt:
+                    filtered_events.append(ev)
+
+            all_events.extend(filtered_events)
+
+            # 结束条件：无数据或已越过窗口下界
+            if not page_events:
+                break
+            if oldest_dt_on_page is None or oldest_dt_on_page <= t0_dt:
+                break
+
+            # 推进游标：下一轮以本页最旧事件时间作为 endingBefore
+            # 减去 1 微秒以避免边界重复
+            current_ending_before = oldest_dt_on_page - timedelta(microseconds=1)
+
+        # 规范化返回结构
+        t0_str = t0_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        t1_str = t1_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        if all_events:
+            occurred_list = []
+            for ev in all_events:
+                if ev.get("occurredAt"):
+                    try:
+                        occurred_list.append(datetime.fromisoformat(ev["occurredAt"].replace("Z", "+00:00")))
+                    except Exception:
+                        pass
+            if occurred_list:
+                page_start_at = min(occurred_list).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                page_end_at = max(occurred_list).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                page_start_at = t0_str
+                page_end_at = t1_str
+        else:
+            page_start_at = t0_str
+            page_end_at = t1_str
+
+        result = {
+            "message": None if all_events else "no events in the time window",
+            "pageStartAt": page_start_at,
+            "pageEndAt": page_end_at,
+            "events": all_events
+        }
+        return ReturnResponse(code=0, msg=f"获取到 {len(all_events)} 个网络事件", data=result)
+    
+    def get_event_types(self, network_id):
+        '''
+        获取指定网络支持的事件类型枚举，用于辅助构造 includedEventTypes 过滤条件。
+
+        Args:
+            network_id (str): 网络 ID（必填）
+
+        Returns:
+            ReturnResponse:
+                - code = 0: 成功，data 为接口返回的 JSON（通常是事件类型数组）
+                - code = 1: 失败，msg 包含错误信息
+
+        使用示例:
+            r = client.get_event_types(network_id='L_xxx')
+            if r.code == 0:
+                # r.data 通常为形如 [{'type': 'association'}, {'type': 'auth_fail'}, ...]
+                types = [i.get('type') for i in r.data if isinstance(i, dict)]
+                # 然后在 get_network_events 中作为 included_event_types 传入精确字符串
+                client.get_network_events(
+                    network_id='L_xxx',
+                    product_type='wireless',
+                    included_event_types=['auth_fail'],  # 示例
+                    last_minute=5
+                )
+        '''
+        # 支持翻页：完全参考 111.py，直接使用 requests
+        all_types: list = []
+        url = f"{self.base_url}/networks/{network_id}/events/eventTypes"
+        
+        while True:
+            attempt = 0
+            max_retries = self.retry_max_retries
+            
+            while True:
+                attempt += 1
+                try:
+                    resp = requests.get(url, headers=self.headers, timeout=self.timeout)
+                    
+                    status = resp.status_code
+                    if status == 429 or 500 <= status < 600:
+                        if attempt > max_retries:
+                            return ReturnResponse(code=1, msg=f"获取事件类型失败（多次重试后仍为 {status}）", data=None)
+                        
+                        retry_after = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+                        if retry_after:
+                            try:
+                                delay = float(retry_after)
+                            except ValueError:
+                                delay = 1.0 * attempt
+                        else:
+                            delay = 1.0 * attempt
+                        time.sleep(delay)
+                        continue
+                    
+                    resp.raise_for_status()
+                    break
+                except (requests.Timeout, requests.ReadTimeout, requests.ConnectionError) as e:
+                    if attempt > max_retries:
+                        return ReturnResponse(code=1, msg=f"获取事件类型失败: {str(e)}", data=None)
+                    time.sleep(1.0 * attempt)
+                    continue
+            
+            payload = resp.json()
+            
+            # 累加当前页
+            if isinstance(payload, list):
+                all_types.extend(payload)
+            elif isinstance(payload, dict) and 'types' in payload and isinstance(payload['types'], list):
+                all_types.extend(payload['types'])
+            
+            # 使用 requests 的 .links 属性获取下一页（与 111.py 完全一致）
+            if "next" in resp.links:
+                url = resp.links["next"]["url"]
+            else:
+                break
+        
+        return ReturnResponse(code=0, msg=f"获取到 {len(all_types)} 种事件类型", data=all_types)
+ 
     def get_wireless_failcounter(self, network_id: str, timespan: int=5*60, serial: str=None):
         '''
         https://developer.cisco.com/meraki/api-v1/get-network-wireless-failed-connections/
@@ -500,7 +852,7 @@ class Meraki:
             timeout=self.timeout
         )
         if r.status_code == 200:
-            return ReturnResponse(code=0, msg="获取 SSID 成功", data=r.json())
+            return ReturnResponse(code=0, msg=f"获取 SSID 成功", data=r.json())
         return ReturnResponse(code=1, msg=f"获取 SSID 失败: {r.status_code} - {r.text}", data=None)
     
     def get_ssid_by_number(self, network_id, ssid_number):
@@ -514,6 +866,17 @@ class Meraki:
         )
         if r.status_code == 200:
             return r.json()['name']
+    
+    def get_ssid_by_name(self, network_id, ssid_name):
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-network-wireless-ssid-by-name/
+        '''
+        r = self.get_ssids(network_id=network_id)
+        if r.code == 0:
+            for ssid in r.data:
+                if ssid['name'] == ssid_name:
+                    return ssid
+        return None
 
     def update_ssid(self, network_id, ssid_number, body):
         '''
@@ -535,3 +898,35 @@ class Meraki:
         if r.status_code == 200:
             return ReturnResponse(code=0, msg=f"更新 SSID 成功", data=r.json())
         return ReturnResponse(code=1, msg=f"更新 SSID 失败: {r.status_code} - {r.text}", data=None)
+    
+    def is_ssid_exists(self, network_id, ssid_name) -> bool:
+        '''
+        Args:
+            network_id (str): 网络ID
+            ssid_name (str): SSID名称
+
+        Returns:
+            bool: True 表示存在, False 表示不存在
+        '''
+        r = self.get_ssids(network_id=network_id)
+        if r.code == 0:
+            for ssid in r.data:
+                if ssid['name'] == ssid_name:
+                    return True
+        return False
+        
+    def create_ssid(self, network_id, ssid_name) -> ReturnResponse:
+        if self.is_ssid_exists(network_id=network_id, ssid_name=ssid_name):
+            return ReturnResponse(code=0, msg=f"SSID {ssid_name} 已存在", data=None)
+        
+        body = {
+            "name": ssid_name,
+            "enabled": True
+        }
+        r = requests.post(
+            url=f"{self.base_url}/networks/{network_id}/wireless/ssids",
+            headers=self.headers,
+            timeout=self.timeout,
+            json=body
+        )
+        
