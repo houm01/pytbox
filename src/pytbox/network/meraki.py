@@ -415,7 +415,7 @@ class Meraki:
             error_msg = r.json()['error']
         except KeyError:
             error_msg = r.json()
-        return ReturnResponse(code=1, msg=f"重启 {serial} 失败, 报错 {error_msg}", data=None)
+        return ReturnResponse(code=1, msg=f"重启 {serial} 失败, 报错 {error_msg if isinstance(error_msg, str) else json.dumps(error_msg)}", data=None)
     
     def get_alerts(self):
         # from datetime import datetime, timedelta
@@ -842,6 +842,35 @@ class Meraki:
             return ReturnResponse(code=0, msg=f"获取交换机端口状态成功", data=r.json())
         return ReturnResponse(code=1, msg=f"获取交换机端口状态失败: {r.status_code} - {r.text}", data=None)
     
+    def get_switch_port(self, serial, port_id):
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-device-switch-port/
+        '''
+        r = self._request(
+            method='GET',
+            url=f"{self.base_url}/devices/{serial}/switch/ports/{port_id}",
+            headers=self.headers,
+            timeout=self.timeout,
+        )
+        if r.code == 0:
+            return ReturnResponse(code=0, msg=f"获取交换机端口成功", data=r.data)
+        return ReturnResponse(code=1, msg=f"获取交换机端口失败: {r.status_code} - {r.text}", data=None)
+    
+    def update_switch_port(self, serial, port_id, body):
+        '''
+        https://developer.cisco.com/meraki/api-v1/update-device-switch-port/
+        '''
+        r = self._request(
+            method='PUT',
+            url=f"{self.base_url}/devices/{serial}/switch/ports/{port_id}",
+            headers=self.headers,
+            timeout=self.timeout,
+            json=body
+        )
+        if r.code == 0:
+            return ReturnResponse(code=0, msg=f"更新交换机端口成功", data=r.data)
+        return ReturnResponse(code=1, msg=f"更新交换机端口失败: {r.status_code} - {r.text}", data=None)
+    
     def get_ssids(self, network_id):
         '''
         https://developer.cisco.com/meraki/api-v1/get-network-wireless-ssids/
@@ -929,4 +958,5 @@ class Meraki:
             timeout=self.timeout,
             json=body
         )
+        
         
