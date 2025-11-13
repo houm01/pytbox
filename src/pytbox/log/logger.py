@@ -99,7 +99,7 @@ class AppLogger:
         if feishu_notify:
             self.feishu.extensions.send_message_notify(
                 title=f"自动化脚本告警: {self.app_name}",
-                content=message
+                content=f"触发时间: {TimeUtils.get_current_time_str()}\n{message}"
             )
         
     def warning(self, message: str):
