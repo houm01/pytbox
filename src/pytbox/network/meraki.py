@@ -183,6 +183,57 @@ class Meraki:
             return ReturnResponse(code=0, msg=f"获取到 {size} 个网络", data=data)
         return ReturnResponse(code=1, msg=f"获取网络失败: {r.msg}")
 
+    def get_network(self, network_id: str) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-network/
+
+        Args:
+            network_id (str): _description_
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+        r = self._request(
+            method='GET',
+            url=f"{self.base_url}/networks/{network_id}",
+            headers=self.headers,
+            timeout=self.timeout,
+        )
+        return r
+    
+    def create_network(self, 
+                       name=None, 
+                       product_types: list=['switch', 'wireless'], 
+                       config_template_id=None, 
+                       tags=[], 
+                       notes=None,
+                       is_bound_to_config_template: bool=True
+                    ):
+        '''
+        https://developer.cisco.com/meraki/api-v1/create-organization-network/
+        '''
+        # /organizations/{organizationId}/networks
+        payload = {
+                "productTypes": product_types,
+                "configTemplateId": config_template_id,
+                "name": name,
+                "timeZone": "Asia/Shanghai",
+                # "enrollmentString": null,
+                "tags": tags,
+                "notes": notes,
+                "isBoundToConfigTemplate": is_bound_to_config_template,
+                "isVirtual": False,
+                "details": None
+        }
+        r = self._request(
+            method='POST',
+            url=f"{self.base_url}/organizations/{self.organization_id}/networks",
+            headers=self.headers,
+            timeout=self.timeout,
+            json=payload
+        )
+        return r
+    
     def get_network_id_by_name(self, name: str) -> str | None:
         '''
         name 必须是唯一值，否则仅反馈第一个匹配到的 network
@@ -199,6 +250,47 @@ class Meraki:
                 if name in network['name']:
                     return network['id']
         return None
+
+    def get_switch_stacks(self, network_id: str=None) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-network-switch-stacks/
+        '''
+        r = self._request(
+            "GET",
+            f"{self.base_url}/networks/{network_id}/switch/stacks",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        return r
+
+    def create_switch_stack(self, network_id: str=None, stack_name:str='new stack', serials:list =[]) -> ReturnResponse:
+        '''
+        _summary_
+
+        Args:
+            network_id (str, optional): _description_. Defaults to None.
+            stack_name (str, optional): _description_. Defaults to 'new stack'.
+            serials (list, optional): _description_. Defaults to [].
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+        body = {
+            "name": stack_name,
+            "serials": serials,
+        }
+
+        response = requests.post(
+            url=f"{self.base_url}/networks/{network_id}/switch/stacks",
+            headers=self.headers,
+            timeout=self.timeout,
+            json=body
+        )
+        if response.status_code == 200:
+            return ReturnResponse(code=0, msg=f"network_id: {network_id}, stack_name: {stack_name}, serials: {serials} 创建成功", data=response.json())
+        else:
+            return ReturnResponse(code=1, msg=f"network_id: {network_id}, stack_name: {stack_name}, serials: {serials} 创建失败: {response.status_code} - {response.json()}", data=None)
+
 
     def get_devices(self, network_ids: Any = []) -> ReturnResponse:
         '''
@@ -415,7 +507,7 @@ class Meraki:
             error_msg = r.json()['error']
         except KeyError:
             error_msg = r.json()
-        return ReturnResponse(code=1, msg=f"重启 {serial} 失败, 报错 {error_msg if isinstance(error_msg, str) else json.dumps(error_msg)}", data=None)
+        return ReturnResponse(code=1, msg=f"重启 {serial} 失败, 报错 {error_msg}", data=None)
     
     def get_alerts(self):
         # from datetime import datetime, timedelta
@@ -727,6 +819,9 @@ class Meraki:
         new_serials = []
         already_claimed_serials = []
         
+        if isinstance(serials, str):
+            serials = [serials]
+        
         for serial in serials:
             r = self.get_device_detail(serial=serial)
             if r.code == 0:
@@ -740,7 +835,7 @@ class Meraki:
             "serials": new_serials,
             "addAtomically": True
         }
-        
+ 
         r = requests.post(
             url=f"{self.base_url}/networks/{network_id}/devices/claim",
             headers=self.headers,
@@ -759,7 +854,7 @@ class Meraki:
             msg = f"Claim network devices successfully, claimed {len(new_serials)} devices"
         
         return ReturnResponse(code=code, msg=msg)
-        
+
     def update_device(self, serial: str, name: str=None, tags: list=None, address: str=None, lat: float=None, lng: float=None) -> ReturnResponse:
         '''
         https://developer.cisco.com/meraki/api-v1/update-device/
@@ -782,7 +877,17 @@ class Meraki:
             timeout=self.timeout
         )
 
-
+    def get_switch_profiles(self, config_template_id: str=None) -> ReturnResponse:
+        response = requests.get(
+            url=f"{self.base_url}/organizations/{self.organization_id}/configTemplates/{config_template_id}/switch/profiles",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        if response.status_code == 200:
+            return ReturnResponse(code=0, msg='', data=response.json())
+        else:
+            return ReturnResponse(code=1, msg='获取失败',data=response.text)
+    
     def update_device(self, 
                       config_template_id: str=None,
                       serial: str=None, 

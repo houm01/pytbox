@@ -5,6 +5,9 @@ from typing import Literal
 from rich.console import Console
 from rich.theme import Theme
 from rich.prompt import Prompt
+from rich.logging import RichHandler
+
+
 
 
 class RichUtils:
@@ -29,3 +32,6 @@ class RichUtils:
             show_choices=show_choices,
         )
         return choice
+    
+    def log(self, msg: str, style: Literal['info', 'warning', 'danger']='info'):
+        self.console.log(msg, style=style)
