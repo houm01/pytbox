@@ -88,13 +88,13 @@ def get_logger_sls(app):
 env = get_env_by_os_environment(check_key='ENV')
 meraki = Meraki(api_key=config['meraki']['api_key'], organization_id=config['meraki']['organization_id'])
 
-vmware_test = VMwareClient(
-    host=config['vmware']['test']['host'],
-    username=config['vmware']['test']['username'],
-    password=config['vmware']['test']['password'],
-    version=config['vmware']['test']['version'],
-    proxies=config['vmware']['test']['proxies']
-)
+# vmware_test = VMwareClient(
+#     host=config['vmware']['test']['host'],
+#     username=config['vmware']['test']['username'],
+#     password=config['vmware']['test']['password'],
+#     version=config['vmware']['test']['version'],
+#     proxies=config['vmware']['test']['proxies']
+# )
 
 pyjira = PyJira(
     base_url=config['jira']['base_url'],

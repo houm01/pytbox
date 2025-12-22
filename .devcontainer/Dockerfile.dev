@@ -1,5 +1,16 @@
-# 使用官方 Python 3.11 镜像作为基础镜像
-FROM python:3.11-slim
+# 推荐使用 python 的官方基础镜像，例如以下几种：
+
+# 1. 精简版，适用于只需要运行 Python 应用，体积小安装快
+FROM python:3.12-bullseye
+
+# 2. 如果需要包含常用的构建工具和完整的操作系统环境（例如 gcc、make），可以使用完整版：
+# FROM python:3.12
+
+# 3. 如果更关注安全和一致性，也可以选择官方的 debian 或 alpine 变体：
+# FROM python:3.12-bullseye
+# FROM python:3.12-alpine
+
+# 对于中国大陆环境，推荐 python:3.12-slim，配合更换 apt 镜像源即可
 
 # 设置工作目录
 WORKDIR /app
@@ -7,16 +18,14 @@ WORKDIR /app
 ENV PYTHONPATH=/app/automation \
     TZ=Asia/Shanghai \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    ENV=dev 
+    ENV=dev
 
 # 修改为国内源
-COPY debian.sources /etc/apt/sources.list.d/debian.sources
+# COPY debian.sources /etc/apt/sources.list.d/debian.sources
 
 # 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
- 
+# RUN apt-get update && apt-get install -y \
+#     build-essential \
+#     curl \
+#     git \
+#     && rm -rf /var/lib/apt/lists/*

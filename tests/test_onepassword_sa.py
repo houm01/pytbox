@@ -8,7 +8,7 @@ from pytbox.onepassword_sa import OnePasswordClient
 async def main():
     """简单测试示例"""
     try:
-        async with OnePasswordClient(vault_id="hcls5uxuq5dmxorw6rfewefdsa", integration_name='automate1') as op:
+        async with OnePasswordClient(vault_id="hcls5uxuq5dmxorw6rfewefdsa", integration_name='automate') as op:
             # items = await op.get_vault_items()
             # print(items)
             item = await op.get_item(item_id="f7eda4fgxfcukna7tpdpw7frlu")

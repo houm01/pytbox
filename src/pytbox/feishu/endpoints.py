@@ -258,6 +258,45 @@ class MessageEndpoint(Endpoint):
         else:
             return ReturnResponse(code=1, msg=f"{message_id} 回复 emoji [{emoji_type}] 失败")
 
+    def webhook_send_feishu_card(self, webhook_url: str,template_id: str=None, template_version: str='1.0.0', template_variable: dict={}) -> ReturnResponse:
+        '''
+        https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
+        https://open.feishu.cn/document/feishu-cards/quick-start/send-message-cards-with-custom-bot
+
+        Args:
+            template_id (str, optional): _description_. Defaults to None.
+            template_version (str, optional): _description_. Defaults to '1.0.0'.
+            template_variable (dict, optional): _description_. Defaults to {}.
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+
+        hearders = {
+            "Content-type": "application/json",
+            "charset":"utf-8"
+        }
+
+        payload = {
+            "msg_type": "interactive",
+            "card":
+                {
+                    "type":"template",
+                    "data":
+                        {
+                            "template_id": template_id,
+                            "template_version_name": template_version, 
+                            "template_variable": template_variable
+                        }
+                    }
+            }
+        resp = requests.request(url=webhook_url, method='POST', json=payload, headers=hearders)
+        if resp.status_code == 200:
+            return ReturnResponse(code=0, msg=resp.text, data=resp.json())
+        else:
+            return ReturnResponse(code=1, msg=resp.text, data=resp.json())
+
+
 class BitableEndpoint(Endpoint):
     
     def list_records(self, app_token, table_id, field_names: list=None, automatic_fields: bool=False, filter_conditions: list=None, conjunction: Literal['and', 'or']='and', sort_field_name: str=None, view_id: str=None):

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import Any, Literal
+from typing import Any, List, Literal
 import requests
 import time
 from datetime import datetime, timezone, timedelta
@@ -170,6 +170,8 @@ class Meraki:
         if tags:
             params['tags[]'] = tags
         
+        params['perPage'] = 1000
+        
         r = self._request(
             "GET",
             f"{self.base_url}/organizations/{self.organization_id}/networks",
@@ -255,13 +257,14 @@ class Meraki:
         '''
         https://developer.cisco.com/meraki/api-v1/get-network-switch-stacks/
         '''
-        r = self._request(
-            "GET",
-            f"{self.base_url}/networks/{network_id}/switch/stacks",
+        r = requests.get(
+            url=f"{self.base_url}/networks/{network_id}/switch/stacks",
             headers=self.headers,
             timeout=self.timeout
         )
-        return r
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"获取堆叠成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"获取堆叠失败", data=r.text)
 
     def create_switch_stack(self, network_id: str=None, stack_name:str='new stack', serials:list =[]) -> ReturnResponse:
         '''
@@ -843,6 +846,7 @@ class Meraki:
             timeout=self.timeout + 10
         )
         
+        # print(r.text)
         if len(already_claimed_serials) == len(serials):
             code = 0
             msg = f"All {len(already_claimed_serials)} devices are already claimed"
@@ -850,32 +854,33 @@ class Meraki:
             code = 0
             msg = f"Some {len(already_claimed_serials)} devices are already claimed"
         else:
-            code = 0
-            msg = f"Claim network devices successfully, claimed {len(new_serials)} devices"
+            code = 1
+            msg = f"Claim network devices failed"
         
         return ReturnResponse(code=code, msg=msg)
 
-    def update_device(self, serial: str, name: str=None, tags: list=None, address: str=None, lat: float=None, lng: float=None) -> ReturnResponse:
-        '''
-        https://developer.cisco.com/meraki/api-v1/update-device/
-        '''
-        body = {}
-        if name:
-            body['name'] = name
-        if tags:
-            body['tags'] = tags
-        if address:
-            body['address'] = address
-        if lat:
-            body['lat'] = lat
-        if lng:
-            body['lng'] = lng
-        r = requests.put(
-            url=f"{self.base_url}/devices/{serial}",
-            headers=self.headers,
-            json=body,
-            timeout=self.timeout
-        )
+    # def update_device(self, serial: str, name: str=None, tags: list=None, address: str=None, lat: float=None, lng: float=None) -> ReturnResponse:
+    #     '''
+    #     https://developer.cisco.com/meraki/api-v1/update-device/
+    #     '''
+    #     body = {}
+    #     if name:
+    #         body['name'] = name
+    #     if tags:
+    #         body['tags'] = tags
+    #     if address:
+    #         body['address'] = address
+    #     if lat:
+    #         body['lat'] = lat
+    #     if lng:
+    #         body['lng'] = lng
+            
+    #     r = requests.put(
+    #         url=f"{self.base_url}/devices/{serial}",
+    #         headers=self.headers,
+    #         json=body,
+    #         timeout=self.timeout
+    #     )
 
     def get_switch_profiles(self, config_template_id: str=None) -> ReturnResponse:
         response = requests.get(
@@ -915,11 +920,13 @@ class Meraki:
             body['Lng'] = lng
 
         if not switch_profile_id:
-            model = self.get_device_detail(serial=serial).data.get('model')
-            for switch_profile in self.get_switch_profiles(config_template_id=config_template_id).data:
-                if switch_profile.get('model') == model:
-                    switch_profile_id = switch_profile.get('switchProfileId')
-                    body['switchProfileId'] = switch_profile_id
+            device_detail = self.get_device_detail(serial=serial).data
+            if device_detail:
+                model = device_detail.get('model')
+                for switch_profile in self.get_switch_profiles(config_template_id=config_template_id).data:
+                    if switch_profile.get('model') == model:
+                        switch_profile_id = switch_profile.get('switchProfileId')
+                        body['switchProfileId'] = switch_profile_id
         else:
             body['switchProfileId'] = switch_profile_id
         
@@ -927,7 +934,7 @@ class Meraki:
             url=f"{self.base_url}/devices/{serial}",
             headers=self.headers,
             json=body,
-            timeout=3
+            timeout=self.timeout
         )
         if response.status_code == 200:
             return ReturnResponse(code=0, msg=f"更新设备 {serial} 成功", data=response.json())
@@ -939,7 +946,7 @@ class Meraki:
         https://developer.cisco.com/meraki/api-v1/get-device-switch-ports/
         '''
         r = requests.get(
-            url=f"{self.base_url}/devices/{serial}/switch/ports/statuses",
+            url=f"{self.base_url}/devices/{serial}/switch/ports",
             headers=self.headers,
             timeout=self.timeout
         )
@@ -947,6 +954,8 @@ class Meraki:
             return ReturnResponse(code=0, msg=f"获取交换机端口状态成功", data=r.json())
         return ReturnResponse(code=1, msg=f"获取交换机端口状态失败: {r.status_code} - {r.text}", data=None)
     
+    
+
     def get_switch_port(self, serial, port_id):
         '''
         https://developer.cisco.com/meraki/api-v1/get-device-switch-port/
@@ -961,9 +970,20 @@ class Meraki:
             return ReturnResponse(code=0, msg=f"获取交换机端口成功", data=r.data)
         return ReturnResponse(code=1, msg=f"获取交换机端口失败: {r.status_code} - {r.text}", data=None)
     
-    def update_switch_port(self, serial, port_id, body):
+    def update_switch_port(self, serial, port_id, body) -> ReturnResponse:
         '''
+        update switch port
         https://developer.cisco.com/meraki/api-v1/update-device-switch-port/
+
+        Args:
+            serial (str): 设备序列号
+            port_id (str): 端口ID
+            body (dict): 更新内容
+
+        Returns:
+            ReturnResponse:
+                - code = 0: 成功，data 为接口返回的 JSON
+                - code = 1: 失败，msg 包含错误信息
         '''
         r = self._request(
             method='PUT',
@@ -973,8 +993,8 @@ class Meraki:
             json=body
         )
         if r.code == 0:
-            return ReturnResponse(code=0, msg=f"更新交换机端口成功", data=r.data)
-        return ReturnResponse(code=1, msg=f"更新交换机端口失败: {r.status_code} - {r.text}", data=None)
+            return ReturnResponse(code=0, msg=f"更新交换机端口 {port_id} 成功", data=body)
+        return ReturnResponse(code=1, msg=f"更新交换机端口 {port_id} 失败", data=body)
     
     def get_ssids(self, network_id):
         '''
@@ -1063,5 +1083,129 @@ class Meraki:
             timeout=self.timeout,
             json=body
         )
+    
+    def get_network_syslog_servers(self, network_id: str) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-network-syslog-servers/
+
+        Args:
+            network_id (str): _description_
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+        r = requests.get(
+            url=f"{self.base_url}/networks/{network_id}/syslogServers",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"获取网络 syslog 服务器成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"获取网络 syslog 服务器失败: {r.status_code} - {r.text}", data=None)
+    
+    def update_network_syslog_servers(self, network_id: str, payload: dict) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/update-network-syslog-servers/
+
+        Args:
+            network_id (str): _description_
+            payload (dict): _description_
+
+        Returns:
+            ReturnResponse: _description_
+        '''
+        r = requests.put(
+            url=f"{self.base_url}/networks/{network_id}/syslogServers",
+            headers=self.headers,
+            timeout=self.timeout,
+            json=payload
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"更新网络 syslog 服务器成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"更新网络 syslog 服务器失败: {r.status_code} - {r.text}", data=None)
+    
+    def get_org_config_templates(self) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/get-organization-config-templates/
+        '''
+        r = requests.get(
+            url=f"{self.base_url}/organizations/{self.organization_id}/configTemplates",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"获取组织配置模板成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"获取组织配置模板失败: {r.status_code} - {r.text}", data=None)
+
+    def remove_network_device(self, network_id: str, serial: str) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/remove-network-device/
+        '''
+        r = requests.post(
+            url=f"{self.base_url}/networks/{network_id}/devices/remove",
+            headers=self.headers,
+            json={"serial": serial},
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"移除设备 {serial} 成功", data=None)
+        else:
+            if 'Device does not belong to a network' in r.text:
+                return ReturnResponse(code=0, msg="设备不存在于网络中", data=None)
+        return ReturnResponse(code=1, msg=f"移除设备 {serial} 失败: {r.status_code} - {r.text}", data=None)
+
+    def delete_switch_stack(self, network_id: str, stack_id: str) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/delete-network-switch-stack/
+        '''
+        r = requests.delete(
+            url=f"{self.base_url}/networks/{network_id}/switch/stacks/{stack_id}",
+            headers=self.headers,
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"删除堆叠 {stack_id} 成功", data=None)
+        return ReturnResponse(code=1, msg=f"删除堆叠 {stack_id} 失败: {r.status_code} - {r.text}", data=r.text)
+
+    def bind_network_template(self, network_id: str, config_template_id: str, auto_bind: bool=False) -> ReturnResponse:
+        '''
+        hhttps://developer.cisco.com/meraki/api-v1/bind-network/
+        '''
+        body = {
+            "configTemplateId": config_template_id,
+            "autoBind": auto_bind
+        }
+        r = requests.post(
+            url=f"{self.base_url}/networks/{network_id}/bind",
+            headers=self.headers,
+            json={"configTemplateId": config_template_id, "autoBind": auto_bind},
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"绑定模板 {config_template_id} 成功", data=None)
+        return ReturnResponse(code=1, msg=f"绑定模板 {config_template_id} 失败: {r.status_code} - {r.text}", data=r.text)
+   
+    def update_network(self, network_id: str, tags: List[str]=None) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/update-network/
         
-        
+        Args:
+            network_id (str): 网络ID
+            tags (List[str]): 标签列表
+
+        Returns:
+            ReturnResponse: 返回更新结果
+        '''
+        payload = {}
+        if tags:
+            payload['tags'] = tags
+            
+        r = requests.put(
+            url=f"{self.base_url}/networks/{network_id}",
+            headers=self.headers,
+            json=payload,
+            timeout=self.timeout
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"更新网络 {network_id} 成功", data=r.json())
+        return ReturnResponse(code=1, msg=f"更新网络 {network_id} 失败: {r.status_code} - {r.text}", data=r.text)
