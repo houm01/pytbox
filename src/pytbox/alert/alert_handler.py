@@ -39,7 +39,8 @@ class AlertHandler:
                  resolved_expr: str=None,
                  suggestion: str='',
                  troubleshot: str='暂无',
-                 mongo_id: str=None
+                 mongo_id: str=None,
+                 event_description: str=None
             ):
         
         if not event_id:
@@ -83,14 +84,35 @@ class AlertHandler:
                 content.insert(2, f'**恢复时间**: {TimeUtils.convert_timeobj_to_str(event_time, timezone_offset=0)}')
     
             if self.config['feishu']['enable_alert']:
-                self.feishu.extensions.send_message_notify(
-                    receive_id=self.config['feishu']['receive_id'],
+                
+                if event_type == "trigger":
+                    alarm_time = TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)
+                else:
+                    alarm_time = self.mongo.collection.find_one(filter_doc, {'event_time': 1})['event_time']
+                    resolved_time = TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)
+                    
+                self.feishu.extensions.send_alert_notify(
+                    event_content=event_content,
+                    event_name=event_name,
+                    entity_name=entity_name,
+                    event_time=alarm_time,
+                    resolved_time=resolved_time,
+                    event_description=event_description,
+                    actions=troubleshot,
+                    history=self.mongo.recent_alerts(event_content=event_content),
                     color='red' if event_type == "trigger" else 'green',
-                    title=event_content + " 已恢复" if event_type == "resolved" else event_content,
                     priority=priority,
-                    sub_title='测试告警, 无需处理' if self.env == 'dev' else '',
-                    content='\n'.join(content)
+                    receive_id=self.config['feishu']['receive_id']
                 )
+                
+                # self.feishu.extensions.send_message_notify(
+                #     receive_id=self.config['feishu']['receive_id'],
+                #     color='red' if event_type == "trigger" else 'green',
+                #     title=event_content + " 已恢复" if event_type == "resolved" else event_content,
+                #     priority=priority,
+                #     sub_title='测试告警, 无需处理' if self.env == 'dev' else '',
+                #     content='\n'.join(content)
+                # )
             
             if self.config['mail']['enable_mail']:
                 if event_type == "trigger":

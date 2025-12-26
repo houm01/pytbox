@@ -541,7 +541,30 @@ class DocsEndpoint(Endpoint):
             return self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/descendant',
                                     method='POST',
                                     body=payload)
+        elif payload.get('children')[0]['block_type'] == 27:
+            
+            r = self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/children',
+                                    method='POST',
+                                    body=payload)
+            block_id = r.data['children'][0]['block_id']          
+            
+            file_token = self.parent.extensions.upload_media(
+                file_path=payload['file_path'],
+                block_id=block_id
+            )['data']['file_token']
+            
+            res = self.update_block(
+                document_id=document_id,
+                block_id=block_id,
+                replace_image_token=file_token,
+                image_width=payload['image_width'],
+                image_height=payload['image_height'],
+                image_align=payload['image_align']
+            )
+            return res
+            # print(payload)
         else:
+            # print(payload)
             return self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/children',
                                     method='POST',
                                     body=payload)
@@ -668,6 +691,7 @@ class ExtensionsEndpoint(Endpoint):
     def build_block_text(self, elements: list=None) -> dict:
         '''
         构建飞书文档文本块。
+        https://open.feishu.cn/document/docs/docs/data-structure/block
 
         Args:
             elements (list, optional): 请使用 build_block_element 函数构建元素
@@ -704,6 +728,33 @@ class ExtensionsEndpoint(Endpoint):
             children.append({
                 "block_type": 12,
                 "bullet": {
+                    "elements": [
+                        self.build_block_element(content=content, background_color=background_color, text_color=text_color)
+                    ]
+                }
+            })
+            
+        return {
+            "index": 0,
+            "children": children
+        }
+
+    def build_block_ordered_list(self, content_list: list = None, background_color: int=None, text_color: int=None) -> dict:
+        """
+        构建飞书文档项目符号列表块。
+
+        Args:
+            content_list (list, optional): 内容列表，将批量添加到 children 中
+
+        Returns:
+            dict: 飞书文档项目符号列表块
+        """
+        children = []
+        
+        for content in content_list:
+            children.append({
+                "block_type": 13,
+                "ordered": {
                     "elements": [
                         self.build_block_element(content=content, background_color=background_color, text_color=text_color)
                     ]
@@ -931,7 +982,7 @@ class ExtensionsEndpoint(Endpoint):
                         file_path=block['file_path'],
                         block_id=block_id
                     )['data']['file_token']
-            
+                    
                     res = self.parent.docs.update_block(
                         document_id=document_id,
                         block_id=block_id,
@@ -1089,3 +1140,33 @@ class ExtensionsEndpoint(Endpoint):
                 return response.data
         else:
             return None
+    
+    def send_alert_notify(self,
+                          event_content: str=None,
+                          event_name: str=None,
+                          entity_name: str=None,
+                          event_time: str=None,
+                          resolved_time: str=None,
+                          event_description: str=None,
+                          actions: str=None,
+                          history: str=None,
+                          color: Literal['red', 'green', 'blue']='red',
+                          priority: Literal['P0', 'P1', 'P2', 'P3', 'P4']='P2',
+                          receive_id: str=None
+                        )
+        return self.parent.message.send_card(
+            template_id="AAqXPIkIOW0g9",
+            template_variable={
+                "color": color,
+                "event_content": event_content,
+                "event_name": event_name,
+                "entity_name": entity_name,
+                "event_time": event_time,
+                "resolved_time": resolved_time,
+                "event_description": event_description,
+                "actions": actions,
+                "history": history,
+                "priority": priority
+            },
+            receive_id=receive_id
+        )
