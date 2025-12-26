@@ -175,7 +175,12 @@ class VictoriaMetrics:
         else:
             r = self.query(query=query)
         if r.code == 0:
-            value = r.data[0]['value'][1]
+            # print(r.data[0])
+            try:
+                value = r.data[0]['values'][1]
+            except KeyError:
+                value = r.data[0]['value'][1]
+                
             if value == '0':
                 return ReturnResponse(code=0, msg=f"已检查 {target} 最近 {last_minute} 分钟是正常的!", data=r.data)
             else:

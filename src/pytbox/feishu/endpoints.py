@@ -1146,7 +1146,7 @@ class ExtensionsEndpoint(Endpoint):
                           event_name: str=None,
                           entity_name: str=None,
                           event_time: str=None,
-                          resolved_time: str=None,
+                          resolved_time: str='',
                           event_description: str=None,
                           actions: str=None,
                           history: str=None,
@@ -1154,9 +1154,7 @@ class ExtensionsEndpoint(Endpoint):
                           priority: Literal['P0', 'P1', 'P2', 'P3', 'P4']='P2',
                           receive_id: str=None
                         ):
-        return self.parent.message.send_card(
-            template_id="AAqXPIkIOW0g9",
-            template_variable={
+        template_variable={
                 "color": color,
                 "event_content": event_content,
                 "event_name": event_name,
@@ -1167,6 +1165,13 @@ class ExtensionsEndpoint(Endpoint):
                 "actions": actions,
                 "history": history,
                 "priority": priority
-            },
+        }
+        # 移除 value 为 None 的键
+        template_variable = {k: v for k, v in template_variable.items() if v is not None}
+        
+        print(template_variable)
+        return self.parent.message.send_card(
+            template_id="AAqXPIkIOW0g9",
+            template_variable=template_variable,
             receive_id=receive_id
         )

@@ -39,6 +39,8 @@ class AlertHandler:
                  resolved_expr: str=None,
                  suggestion: str='',
                  troubleshot: str='暂无',
+                 actions: str=None,
+                 history: str=None,
                  mongo_id: str=None,
                  event_description: str=None
             ):
@@ -87,24 +89,25 @@ class AlertHandler:
                 
                 if event_type == "trigger":
                     alarm_time = TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)
+                    resolved_time = None
                 else:
                     alarm_time = self.mongo.collection.find_one(filter_doc, {'event_time': 1})['event_time']
+                    alarm_time = TimeUtils.convert_timeobj_to_str(timeobj=alarm_time, timezone_offset=8)
                     resolved_time = TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)
                     
-                self.feishu.extensions.send_alert_notify(
+                r = self.feishu.extensions.send_alert_notify(
                     event_content=event_content,
                     event_name=event_name,
                     entity_name=entity_name,
                     event_time=alarm_time,
                     resolved_time=resolved_time,
                     event_description=event_description,
-                    actions=troubleshot,
-                    history=self.mongo.recent_alerts(event_content=event_content),
+                    actions=actions if actions is not None else troubleshot,
+                    history=history if history is not None else self.mongo.recent_alerts(event_content=event_content),
                     color='red' if event_type == "trigger" else 'green',
                     priority=priority,
                     receive_id=self.config['feishu']['receive_id']
                 )
-                
                 # self.feishu.extensions.send_message_notify(
                 #     receive_id=self.config['feishu']['receive_id'],
                 #     color='red' if event_type == "trigger" else 'green',
