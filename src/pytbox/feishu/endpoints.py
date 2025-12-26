@@ -1153,7 +1153,7 @@ class ExtensionsEndpoint(Endpoint):
                           color: Literal['red', 'green', 'blue']='red',
                           priority: Literal['P0', 'P1', 'P2', 'P3', 'P4']='P2',
                           receive_id: str=None
-                        )
+                        ):
         return self.parent.message.send_card(
             template_id="AAqXPIkIOW0g9",
             template_variable={
