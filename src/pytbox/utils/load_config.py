@@ -4,9 +4,18 @@ import os
 import json
 
 try:
-    import toml
-except ImportError:
-    import tomllib as toml  # Python 3.11+ fallback
+    # Python 3.11+ 标准库
+    import tomllib as toml  # type: ignore
+    _TOML_NEEDS_BINARY_FILE = True
+except ModuleNotFoundError:
+    try:
+        # Python <3.11 的轻量实现
+        import tomli as toml  # type: ignore
+        _TOML_NEEDS_BINARY_FILE = True
+    except ModuleNotFoundError:
+        # 第三方 toml 库（文本文件）
+        import toml  # type: ignore
+        _TOML_NEEDS_BINARY_FILE = False
 from pytbox.onepassword_connect import OnePasswordConnect
 
 
@@ -110,22 +119,29 @@ def load_config_by_file(
     Returns:
         dict: 配置字典
     '''
-    with open(path, 'r', encoding='utf-8') as f:
-        if path.endswith('.toml'): 
-            config = toml.load(f)
+    if path.endswith('.toml'):
+        if _TOML_NEEDS_BINARY_FILE:
+            # tomllib/tomli 需要以二进制模式读取
+            with open(path, 'rb') as f:
+                config = toml.load(f)
         else:
-            # 如果不是 toml 文件，假设是其他格式，这里可以扩展
+            # 第三方 toml 库使用文本模式
+            with open(path, 'r', encoding='utf-8') as f:
+                config = toml.load(f)
+    else:
+        # 如果不是 toml 文件，假设是其他格式，这里可以扩展
+        with open(path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-            
-        # 处理配置值替换
-        oc = None
-        if oc_vault_id:
-            oc = OnePasswordConnect(vault_id=oc_vault_id)
         
-        # 替换配置中的特殊值（1password, password, jsonfile）
-        config = _replace_values(config, oc, jsonfile)
-        
-        return config
+    # 处理配置值替换
+    oc = None
+    if oc_vault_id:
+        oc = OnePasswordConnect(vault_id=oc_vault_id)
+    
+    # 替换配置中的特殊值（1password, password, jsonfile）
+    config = _replace_values(config, oc, jsonfile)
+    
+    return config
 
 
 if __name__ == "__main__":

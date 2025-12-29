@@ -4,6 +4,7 @@ import pymongo
 from ..utils.timeutils import TimeUtils
 from pytbox.utils import timeutils
 
+
 class Mongo:
     '''
     当前主要使用的类
