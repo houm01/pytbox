@@ -407,3 +407,12 @@ class VictoriaMetrics:
         '''
         query = f'vsphere_host_mem_usage_average{{vcenter="{vcenter}", esxhostname="{esxhostname}"}}'
         return self.query(query=query).data[0]['value'][1]
+
+    def get_snmp_interfaces(self, sysname):
+        r = self.query(query=f'snmp_interface_ifOperStatus{{sysName="{sysname}"}}')
+        return r
+    
+    def get_snmp_interface_speed(self, sysname, ifname):
+        r = self.query(query=f'snmp_interface_ifSpeed{{sysName="{sysname}", ifName="{ifname}"}}')
+        speed = r.data[0]['value'][1]
+        return int(int(speed) / 1000 / 1000)
