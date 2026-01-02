@@ -221,7 +221,6 @@ class NetboxClient:
                 # "color": "c5d40a"
             })
         data = Parse.remove_dict_none_value(data=data)
-        # print(data)
         api_url = "/api/ipam/ip-addresses/"
         ip_address_id = self.get_ipam_ipaddress_id(address=address)
         if ip_address_id:
@@ -240,7 +239,6 @@ class NetboxClient:
     def get_ipam_prefix_id(self, prefix):
         api_url = "/api/ipam/prefixes/"
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        # print(response.json())
         for prefix in response.json()['results']:
             if prefix['prefix'] == prefix:
                 return prefix['id']
@@ -257,7 +255,6 @@ class NetboxClient:
             params=params,
             timeout=self.timeout
         )
-        print(r.json())
         if r.json()["count"] > 1:
             raise ValueError(f"prefix {prefix} 存在多个结果")
         elif r.json()["count"] == 0:
@@ -321,7 +318,7 @@ class NetboxClient:
             update_response = self.pynetbox.ipam.ip_ranges.update([data])
         else:
             create_response = self.pynetbox.ipam.ip_ranges.create(**data)
-            print(create_response)
+            # print(create_response)
         #     create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
         try:
             return ReturnResponse(code=0, message=f"{start_address} 已存在, 更新成功!", data=update_response)
@@ -330,33 +327,50 @@ class NetboxClient:
 
     def get_tenants_id(self, name):
         api_url = "/api/tenancy/tenants"
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for tenant in response.json()['results']:
-            if tenant['name'] == name:
-                return tenant['id']
-        return None
+        params = {
+            "name": name
+        }
+        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+        if response.json()['count'] > 1:
+            raise ValueError(f"tenant {name} 存在多个结果")
+        elif response.json()['count'] == 0:
+            return None
+        else:
+            return response.json()['results'][0]['id']
 
-    def add_or_update_tenants(self, name, slug: str=None):
+    def add_or_update_tenants(self, name, slug: str=None) -> ReturnResponse:
+        '''
+        添加或更新租户, requests 会有问题, 添加时提示成功，但实际没有添加，所以用了 pynetbox 模块
 
+        Args:
+            name (str): 租户名称
+            slug (str, optional): _description_. Defaults to None.
+
+        Returns:
+            ReturnResponse: 返回响应对象
+        '''
         if slug is None:
-            slug = Common.get_pinyin(name)
-            self.log.info(f"用户未输入 slug, 已转换为 {slug}")
+            slug = self._process_slug(name=name)
 
         data = {
             "name": name,
             "slug": slug
         }
-        api_url = "/api/tenancy/tenants"
         tenant_id = self.get_tenants_id(name=name)
         if tenant_id:
-            update_response = requests.put(url=self.url + api_url + f"{tenant_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            data['id'] = tenant_id
+            try:
+                r = self.pynetbox.tenancy.tenants.update([data])
+                action = '更新'
+            except pynetbox.core.query.RequestError as e:
+                return ReturnResponse(code=1, msg=f"更新租户 {name}, slug {slug} 失败! {e}", data=None)
         else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-        try:
-            return ReturnResponse(code=0, message=f"{name} 已存在, 更新成功!", data=update_response)
-        except UnboundLocalError:
-            return ReturnResponse(code=0, message=f"{name} 创建成功!", data=create_response)
-    
+            try:
+                r = self.pynetbox.tenancy.tenants.create(data)
+                action = '新增'
+            except pynetbox.core.query.RequestError as e:
+                return ReturnResponse(code=1, msg=f"新增租户 {name}, slug {slug} 失败! {e}", data=None)
+        return ReturnResponse(code=0, msg=f"{action}租户 {name}, slug {slug} 成功!", data=r)
     def _process_slug(self, name):
         slug_mapping = {
             "联想": "Lenovo",
@@ -410,7 +424,7 @@ class NetboxClient:
         if slug is None:
             slug = self._process_slug(name=model)
         
-        print(slug)
+        # print(slug)
         # 优化：使用字典默认值直接映射，不再重复 if/elif 判断
         default_u_height = {
             'ISR1100-4G': 1,
@@ -428,7 +442,7 @@ class NetboxClient:
             "u_height": u_height,
             "manufacturer": self.get_manufacturer_id_by_name(name=manufacturer)
         }
-        print(data)
+        # print(data)
         device_type_id = self.get_device_type_id(model=model)
         if device_type_id:
             update_response = requests.put(url=self.url + api_url + f"{device_type_id}/", headers=self.headers, json=data, timeout=self.timeout)
@@ -515,7 +529,9 @@ class NetboxClient:
             "name": name
         }
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
+        if name is None:
+            return None
+        elif response.json()['count'] > 1:
             raise ValueError(f"tenant {name} 存在多个结果")
         elif response.json()['count'] == 0:
             return None
@@ -533,28 +549,35 @@ class NetboxClient:
                 return site['id']
         return None
     
-    def get_device_id(self, name):
+    def get_device_id(self, name, tenant_id):
         api_url = '/api/dcim/devices/'
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for device in response.json()['results']:
-            if device['name'] == name:
-                return device['id']
-        return None
-    
-    def get_device_type_id_by_name(self, name):
-        print(name)
-        api_url = '/api/dcim/device-types/'
         params = {
-            "model": name
+            "name": name,
+            "tenant_id": tenant_id
         }
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        print(response.json())
         if response.json()['count'] > 1:
-            raise ValueError(f"device type {name} 存在多个结果")
+            raise ValueError(f"device {name} 存在多个结果")
         elif response.json()['count'] == 0:
             return None
         else:
             return response.json()['results'][0]['id']
+    
+    def get_device_type_id_by_name(self, name):
+        if name is not None:
+            api_url = '/api/dcim/device-types/'
+            params = {
+                "model": name
+            }
+            response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+            # print(response.json())
+            if response.json()['count'] > 1:
+                raise ValueError(f"device type {name} 存在多个结果")
+            elif response.json()['count'] == 0 or name is None:
+                return 'other'
+            else:
+                return response.json()['results'][0]['id']
+        return 'other'
     
     def add_or_update_device(self,
                              name,
@@ -574,8 +597,7 @@ class NetboxClient:
                              comments: str=None
                         ):
         api_url = '/api/dcim/devices/'
-        data = {}
-        for k, v in {
+        data = {
             "name": name,
             "device_type": self.get_device_type_id_by_name(name=device_type),
             "role": self.get_device_role_id(name=role),
@@ -585,18 +607,17 @@ class NetboxClient:
             "primary_ip4": self.get_ipam_ipaddress_id(address=primary_ip4),
             "latitude": latitude,
             "longitude": longitude,
-            "rack": self.get_rack_id(name=rack),
+            "rack": self.get_rack_id(name=rack, tenant=tenant),
             "tenant": self.get_tenant_id(name=tenant),
             "serial": serial,
             "face": face,
             "position": position,
             "comments": comments
-        }.items():
-            if v is not None:
-                data[k] = v
-        
-        # print(data)
-        device_id = self.get_device_id(name=name)
+        }
+        data = Parse.remove_dict_none_value(data=data)
+        device_id = self.get_device_id(name=name, tenant_id=self.get_tenant_id(name=tenant))
+        print(data)
+        print(f"{name} {site} {rack} {face}")
         if device_id:
             update_response = requests.put(url=self.url + api_url + f"{device_id}/", headers=self.headers, json=data, timeout=self.timeout)
             if update_response.status_code > 210:
@@ -698,7 +719,6 @@ class NetboxClient:
             }
         })
         contact_id = self.get_contact_id(name=name)
-        # print(contact_id)
         if contact_id:
             update_response = requests.put(url=self.url + api_url + f"{contact_id}/", headers=self.headers, json=data, timeout=self.timeout)
             if update_response.status_code > 210:
@@ -712,10 +732,11 @@ class NetboxClient:
             else:
                 return ReturnResponse(code=0, msg=f"contact {name} 创建成功!", data=create_response.json())
     
-    def get_rack_id(self, name):
+    def get_rack_id(self, name, tenant):
         api_url = '/api/dcim/racks/'
         parms = {
-            "name": name
+            "name": name,
+            "tenant_id": self.get_tenant_id(name=tenant)
         }
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=parms)
         if response.json()['count'] > 1:
@@ -729,20 +750,30 @@ class NetboxClient:
                            site: str=None,
                            name: str=None,
                            status: Literal['active', 'reserved', 'deprecated']='active',
+                           tenant: str=None,
                         ):
+        
+        if status not in ['active', 'reserved', 'deprecated']:
+            raise ValueError(f"rack status {status} 不合法!")
+        
         api_url = '/api/dcim/racks/'
         data = {
             "site": self.get_site_id(name=site),
             "name": name,
             "status": status,
+            "tenant": self.get_tenant_id(name=tenant),
         }
-        rack_id = self.get_rack_id(name=name)
+        data = Parse.remove_dict_none_value(data)
+        rack_id = self.get_rack_id(name=name, tenant=tenant)
         if rack_id:
             update_response = requests.put(url=self.url + api_url + f"{rack_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            return ReturnResponse(code=0, msg=f"rack {name} 已存在, 更新成功!", data=update_response.json())
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"rack {name} 更新失败! {update_response.json()}", data=update_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"rack {name} 已存在, 更新成功!", data=update_response.json())
         else:
             create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 200:
+            if create_response.status_code > 210:
                 return ReturnResponse(code=1, msg=f"rack {name} 创建失败! {create_response.json()}", data=create_response.json())
             else:
                 return ReturnResponse(code=0, msg=f"rack {name} 创建成功!", data=create_response.json())
@@ -806,7 +837,6 @@ class NetboxClient:
         }
         data = Parse.remove_dict_none_value(data)
         interface_id = self.get_interface_id(name=name, device=device)
-        print(interface_id)
         if interface_id:
             update_response = requests.put(url=self.url + api_url + f"{interface_id}/", headers=self.headers, json=data, timeout=self.timeout)
             if update_response.status_code > 210:
@@ -942,3 +972,43 @@ class NetboxClient:
             return None
         else:
             return response.json()['results'][0]['id']
+    
+    def get_site_id(self, name):
+        api_url = '/api/dcim/sites/'
+        params = {
+            "name": name
+        }
+        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+        if name is None:
+            return None
+        elif response.json()['count'] > 1:
+            raise ValueError(f"site {name} 存在多个结果")
+        elif response.json()['count'] == 0:
+            return None
+        else:
+            return response.json()['results'][0]['id']
+    
+    def add_or_update_sites(self, name, slug, tenant):
+        # if status not in ['active', 'staging', 'planned', 'decommissioning', 'retired']:
+        #     raise ValueError(f"site status {status} 不合法!")
+        
+        api_url = '/api/dcim/sites/'
+        data = {
+            "name": name,
+            "slug": slug,
+            "tenant": self.get_tenant_id(tenant)
+        }
+        data = Parse.remove_dict_none_value(data)
+        site_id = self.get_site_id(name=name)
+        if site_id:
+            update_response = requests.put(url=self.url + api_url + f"{site_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"site {name} 更新失败! {update_response.json()}", data=update_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"site {name} 已存在, 更新成功!", data=update_response.json())
+        else:
+            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
+            if create_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"site {name} 创建失败! {create_response.json()}", data=create_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"site {name} 创建成功!", data=create_response.json())
