@@ -6,6 +6,7 @@ import pynetbox
 from typing import Literal, Dict, Any
 
 import requests
+from pypinyin import pinyin, lazy_pinyin
 
 from ..utils.response import ReturnResponse
 from ..utils.parse import Parse
@@ -31,14 +32,20 @@ class NetboxClient:
         r = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         return r.json()
 
-    def get_dcim_region_id(self, name):
-        regions = self.get_org_sites_regions()
-        for region in regions['results']:
-            if region['name'] == name:
-                return region['id']
-        return None
+    def get_region_id(self, name):
+        api_url = "/api/dcim/regions/"
+        params = {
+            "name": name
+        }
+        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+        if response.json()['count'] > 1:
+            raise ValueError(f"region {name} 存在多个结果")
+        elif response.json()['count'] == 0:
+            return None
+        else:
+            return response.json()['results'][0]['id']
 
-    def add_dcim_region(self, name, slug=None, description=None, comments=None):
+    def add_or_update_region(self, name, slug=None):
         '''
         _summary_
 
@@ -48,23 +55,26 @@ class NetboxClient:
         api_url = "/api/dcim/regions/"
         
         if slug is None:
-            slug = Common.get_pinyin(name)
-            self.log.info(f"用户未输入 slug, 已转换为 {slug}")
-    
+            slug = self._process_slug(name)
+
         data = {
             "name": name,
             "slug": slug,
-            # "parent": 0,
-            # "description": description,
-            # "comments": comments
+            
         }
-        response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-        if response.status_code == 400:
-            if "already" in response.json().get('name')[0]:
-                return ReturnResponse(code=2, message=f"{name} 已存在, 跳过创建", data=response.json())
+        region_id = self.get_region_id(name=name)
+        if region_id:
+            update_response = requests.put(url=self.url + api_url + f"{region_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"{name} 更新失败! {update_response.json()}", data=update_response.json())
             else:
-                return ReturnResponse(code=1, message=f"{name} 创建失败", data=response.json())
-        return ReturnResponse(code=0, message=f"{name} 创建成功!", data=response.json())
+                return ReturnResponse(code=0, msg=f"{name} 已存在, 更新成功!", data=update_response.json())
+        else:
+            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
+            if create_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"{name} 创建失败! {create_response.json()}", data=create_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
 
     def get_dcim_site_id(self, name):
         api_url = "/api/dcim/sites"
@@ -79,7 +89,8 @@ class NetboxClient:
                       slug=None, 
                       status: Literal['planned', 'staging', 'active', 'decommissioning', 'retired']='active',
                       address: str='',
-                      region_name: str=None)-> ReturnResponse:
+                      region: str=None,
+                      tenant: str=None)-> ReturnResponse:
         '''
         _summary_
 
@@ -87,17 +98,14 @@ class NetboxClient:
             _type_: _description_
         '''
         api_url = "/api/dcim/sites/"
-        if slug is None:
-            slug = Common.get_pinyin_initials(name)
-            self.log.info(f"用户未输入 slug, 已转换为 {slug}")
             
         data = {
             "name": name,
             "slug": slug,
             "status": status,
-            "region": self.get_dcim_region_id(region_name),
+            "region": self.get_region_id(region),
+            "tenant": self.get_tenant_id(tenant),
             # "group": 0,
-            # "tenant": 0,
             # "facility": "string",
             # "time_zone": "string",
             # "description": "string",
@@ -106,17 +114,19 @@ class NetboxClient:
             # "latitude": 99,
             # "longitude": 999,
         }
-        site_id = self.get_dcim_site_id(name=name)
+        site_id = self.get_site_id(name=name)
         if site_id:
             update_response = requests.put(url=self.url + api_url + f"{site_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"{name} 更新失败! {update_response.json()}", data=update_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"{name} 已存在, 更新成功!", data=update_response.json())
         else:
             create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-
-        # return 
-        try:
-            return ReturnResponse(code=0, msg=f"{name} 已存在, 更新成功!", data=update_response.json())
-        except UnboundLocalError:
-            return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
+            if create_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"{name} 创建失败! {create_response.json()}", data=create_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
     
     def get_dcim_location_id(self, name):
         api_url = "/api/dcim/locations"
@@ -181,16 +191,37 @@ class NetboxClient:
         else:
             return response.json()['results'][0]['id']
 
+    def assign_ipaddress_to_interface(self, address: str, device: str, interface_name: str) -> ReturnResponse:
+        api_url = "/api/ipam/ip-addresses/"
+        data = {
+            "address": address,
+            "assigned_object_type": "dcim.interface",
+            "assigned_object_id": self.get_interface_id(device=device, name=interface_name),
+        }
+        ipaddress_id = self.get_ipam_ipaddress_id(address=address)
+        response = requests.put(url=self.url + api_url + f"{ipaddress_id}/", headers=self.headers, json=data, timeout=self.timeout)
+        if response.status_code > 210:
+            return ReturnResponse(code=1, msg=f"{address} 分配失败! {response.json()}", data=response.json())
+        else:
+            return ReturnResponse(code=0, msg=f"{address} 分配成功!", data=response.json())
+
     def add_or_update_ipam_ipaddress(self, 
                                      address, 
                                      status: Literal['active', 'reserved', 'deprecated', 'dhcp', 'slaac']='active',
                                      tenant: str=None,
-                                     ip_type: Literal['BGP', '电信', '联通', '移动', 'Other']=None
+                                     ip_type: Literal['BGP', '电信', '联通', '移动', 'Other']=None,
+                                     description: str=None,
+                                     assigned_object_type: Literal['dcim.interface']=None,
+                                     assigned_object_id: int=None
                                     ):
+
         data =  {
             "address": address,
             "tenant": self.get_tenants_id(name=tenant),
             "status": status,
+            "description": description,
+            "assigned_object_type": assigned_object_type,
+            "assigned_object_id": assigned_object_id,
         }
         if ip_type:
             
@@ -398,7 +429,10 @@ class NetboxClient:
             "运维": "devops",
             "供应商": "vendor"
         }
-        slug = slug_mapping.get(name, name)
+        slug = slug_mapping.get(name, None)
+        if slug is None:
+            # slug = lazy_pinyin(name, style=Style.NORMAL)
+            slug = ''.join(lazy_pinyin(name))
         return slug.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace('（', '').replace('）', '').replace('+','')
     
     def get_manufacturer_id_by_name(self, name):
@@ -616,8 +650,8 @@ class NetboxClient:
         }
         data = Parse.remove_dict_none_value(data=data)
         device_id = self.get_device_id(name=name, tenant_id=self.get_tenant_id(name=tenant))
-        print(data)
-        print(f"{name} {site} {rack} {face}")
+        # print(data)
+        # print(f"{name} {site} {rack} {face}")
         if device_id:
             update_response = requests.put(url=self.url + api_url + f"{device_id}/", headers=self.headers, json=data, timeout=self.timeout)
             if update_response.status_code > 210:
@@ -630,6 +664,23 @@ class NetboxClient:
                 return ReturnResponse(code=1, msg=f"device {name} 创建失败! {create_response.json()}", data=create_response.json())
             else:
                 return ReturnResponse(code=0, msg=f"device {name} 创建成功!", data=create_response.json())
+    
+    def set_primary_ip4_to_device(self, device_name, tenant, primary_ip4):
+        api_url = '/api/dcim/devices/'
+        data = {
+            "name": device_name,
+            "tenant": tenant,
+            "primary_ip4": self.get_ipam_ipaddress_id(address=primary_ip4)
+        }
+        device_id = self.get_device_id(name=device_name, tenant_id=self.get_tenant_id(name=tenant))
+        if device_id:
+            response = requests.put(url=self.url + api_url + f"{device_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            if response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"device {device_name} 更新失败! {response.json()}", data=response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"device {device_name} 已存在, 更新成功!", data=response.json())
+        else:
+            return ReturnResponse(code=1, msg=f"device {device_name} 不存在!", data=None)
     
     def get_device_role_id(self, name):
         api_url = '/api/dcim/device-roles/'
@@ -751,6 +802,7 @@ class NetboxClient:
                            name: str=None,
                            status: Literal['active', 'reserved', 'deprecated']='active',
                            tenant: str=None,
+                           u_height: int=None
                         ):
         
         if status not in ['active', 'reserved', 'deprecated']:
@@ -762,6 +814,7 @@ class NetboxClient:
             "name": name,
             "status": status,
             "tenant": self.get_tenant_id(name=tenant),
+            "u_height": u_height
         }
         data = Parse.remove_dict_none_value(data)
         rack_id = self.get_rack_id(name=name, tenant=tenant)
@@ -813,7 +866,10 @@ class NetboxClient:
             "device": device
         }
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
+        # print(response.json())
+        if name is None or device is None:
+            return None
+        elif response.json()['count'] > 1:
             raise ValueError(f"interface {name} 存在多个结果")
         elif response.json()['count'] == 0:
             return None
@@ -823,17 +879,21 @@ class NetboxClient:
     def add_or_update_interfaces(self, 
                                  name, 
                                  device, 
-                                 interface_type: Literal['1000base-tx', 'other']='other'):
+                                 interface_type: Literal['1000base-tx', 'other']='other',
+                                 tenant: str=None,
+                                 label: str=None,
+                                 description: str=None):
         api_url = '/api/dcim/interfaces/'
         data = {
             "name": name,
-            "device": self.get_device_id(name=device),
-            "type": interface_type
+            "device": self.get_device_id(name=device, tenant_id=self.get_tenant_id(name=tenant)),
+            "type": interface_type,
+            "label": label,
             # "status": status,
             # "type": type,
             # "mac_address": mac_address,
             # "lag": lag,
-            # "description": description,
+            "description": description,
         }
         data = Parse.remove_dict_none_value(data)
         interface_id = self.get_interface_id(name=name, device=device)
@@ -1012,3 +1072,12 @@ class NetboxClient:
                 return ReturnResponse(code=1, msg=f"site {name} 创建失败! {create_response.json()}", data=create_response.json())
             else:
                 return ReturnResponse(code=0, msg=f"site {name} 创建成功!", data=create_response.json())
+    
+    def get_devices(self, tenant: str=None, device_type: str=None):
+        params = {
+            "tenant": tenant,
+            "device_type": device_type
+        }
+        params = Parse.remove_dict_none_value(params)
+        r = requests.get(url=f'{self.url}/api/dcim/devices', headers=self.headers, timeout=self.timeout, params=params)
+        return r.json()['results']
