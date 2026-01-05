@@ -2,7 +2,9 @@
 
 import sys
 
+import traceback
 from loguru import logger
+
 
 from .victorialog import Victorialog
 from ..database.mongo import Mongo
@@ -171,6 +173,14 @@ class AppLogger:
             self.victorialog.send_program_log(stream=self.stream, level="CRITICAL", message=message, app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
         if self.enable_sls:
             self.sls.put_logs(level="CRITICAL", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
+    
+    def exception(self, message: str):
+        caller_filename, caller_lineno, caller_function, call_full_filename = self._get_caller_info()
+        logger.exception(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
+        tb = traceback.format_exc()
+        if self.enable_victorialog:
+            self.victorialog.send_program_log(stream=self.stream, level="EXCEPTION", message=f"{message}\n{tb}", app_name=self.app_name, file_name=call_full_filename, line_number=caller_lineno, function_name=caller_function)
+        
 
 # 使用示例
 if __name__ == "__main__":
