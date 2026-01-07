@@ -38,6 +38,8 @@ class NetboxClient:
             "name": name
         }
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+        if name is None:
+            return None
         if response.json()['count'] > 1:
             raise ValueError(f"region {name} 存在多个结果")
         elif response.json()['count'] == 0:
@@ -90,7 +92,13 @@ class NetboxClient:
                       status: Literal['planned', 'staging', 'active', 'decommissioning', 'retired']='active',
                       address: str='',
                       region: str=None,
-                      tenant: str=None)-> ReturnResponse:
+                      tenant: str=None,
+                      facility: str=None,
+                      latitude: float=None,
+                      longitude: float=None,
+                      time_zone: str='Asia/Shanghai',
+                      tags: dict=None
+                    )-> ReturnResponse:
         '''
         _summary_
 
@@ -98,22 +106,26 @@ class NetboxClient:
             _type_: _description_
         '''
         api_url = "/api/dcim/sites/"
-            
+        
+        if slug:
+            slug = self._process_slug(slug)
         data = {
             "name": name,
             "slug": slug,
             "status": status,
+            "facility": str(facility),
             "region": self.get_region_id(region),
             "tenant": self.get_tenant_id(tenant),
+            "tags": [tags],
             # "group": 0,
-            # "facility": "string",
-            # "time_zone": "string",
+            "time_zone": time_zone,
             # "description": "string",
             "physical_address": address,
             # "shipping_address": "string",
-            # "latitude": 99,
-            # "longitude": 999,
+            "latitude": round(float(latitude), 2) if latitude is not None else None,
+            "longitude": round(float(longitude), 2) if longitude is not None else None,
         }
+        data = Parse.remove_dict_none_value(data)
         site_id = self.get_site_id(name=name)
         if site_id:
             update_response = requests.put(url=self.url + api_url + f"{site_id}/", headers=self.headers, json=data, timeout=self.timeout)
@@ -392,16 +404,17 @@ class NetboxClient:
             data['id'] = tenant_id
             try:
                 r = self.pynetbox.tenancy.tenants.update([data])
-                action = '更新'
+                action = 'update'
             except pynetbox.core.query.RequestError as e:
-                return ReturnResponse(code=1, msg=f"更新租户 {name}, slug {slug} 失败! {e}", data=None)
+                return ReturnResponse(code=1, msg=f"[{action}] tenant [{name}], slug [{slug}] failed! {e}", data=None)
         else:
             try:
                 r = self.pynetbox.tenancy.tenants.create(data)
-                action = '新增'
+                action = 'create'
             except pynetbox.core.query.RequestError as e:
-                return ReturnResponse(code=1, msg=f"新增租户 {name}, slug {slug} 失败! {e}", data=None)
-        return ReturnResponse(code=0, msg=f"{action}租户 {name}, slug {slug} 成功!", data=r)
+                return ReturnResponse(code=1, msg=f"create tenant [{name}], slug [{slug}] failed! {e}", data=None)
+        return ReturnResponse(code=0, msg=f"[{action}] tenant [{name}], slug [{slug}] success!", data=r)
+    
     def _process_slug(self, name):
         slug_mapping = {
             "联想": "Lenovo",
@@ -433,7 +446,11 @@ class NetboxClient:
         if slug is None:
             # slug = lazy_pinyin(name, style=Style.NORMAL)
             slug = ''.join(lazy_pinyin(name))
-        return slug.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace('（', '').replace('）', '').replace('+','')
+        return slug.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace('（', '').replace('）', '').replace('+','').replace('’', '').replace("'", "")
+    
+    def _process_gps(self, value):
+        value = value.replace('\u200c\u200c', '')
+        return round(float(value), 2) if value is not None else None
     
     def get_manufacturer_id_by_name(self, name):
         api_url = '/api/dcim/manufacturers/'
@@ -583,12 +600,13 @@ class NetboxClient:
                 return site['id']
         return None
     
-    def get_device_id(self, name, tenant_id):
+    def get_device_id(self, name: str=None, tenant_id: str=None):
         api_url = '/api/dcim/devices/'
         params = {
             "name": name,
             "tenant_id": tenant_id
         }
+        params = Parse.remove_dict_none_value(params)
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
         if response.json()['count'] > 1:
             raise ValueError(f"device {name} 存在多个结果")
@@ -608,10 +626,11 @@ class NetboxClient:
             if response.json()['count'] > 1:
                 raise ValueError(f"device type {name} 存在多个结果")
             elif response.json()['count'] == 0 or name is None:
-                return 'other'
+                return self.get_device_type_id_by_name(name='other')
+                # return 'other'
             else:
                 return response.json()['results'][0]['id']
-        return 'other'
+        return self.get_device_type_id_by_name(name='other')
     
     def add_or_update_device(self,
                              name,
@@ -628,7 +647,8 @@ class NetboxClient:
                              serial: str=None,
                              face: Literal['front', 'rear']='front',
                              position: int=None,
-                             comments: str=None
+                             comments: str=None,
+                             software_version: str=None,
                         ):
         api_url = '/api/dcim/devices/'
         data = {
@@ -639,31 +659,33 @@ class NetboxClient:
             "description": description,
             "status": status,
             "primary_ip4": self.get_ipam_ipaddress_id(address=primary_ip4),
-            "latitude": latitude,
-            "longitude": longitude,
+            "latitude": self._process_gps(value=latitude),
+            "longitude": self._process_gps(value=longitude),
             "rack": self.get_rack_id(name=rack, tenant=tenant),
             "tenant": self.get_tenant_id(name=tenant),
             "serial": serial,
             "face": face,
             "position": position,
-            "comments": comments
+            "comments": comments,
         }
+        if software_version:
+            data['custom_fields'] = {}
+            data['custom_fields']['SoftwareVersion'] = software_version
         data = Parse.remove_dict_none_value(data=data)
         device_id = self.get_device_id(name=name, tenant_id=self.get_tenant_id(name=tenant))
-        # print(data)
-        # print(f"{name} {site} {rack} {face}")
+
         if device_id:
             update_response = requests.put(url=self.url + api_url + f"{device_id}/", headers=self.headers, json=data, timeout=self.timeout)
             if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device {name} 更新失败! {update_response.json()}", data=update_response.json())
+                return ReturnResponse(code=1, msg=f"device {name} exists, updated failed! {update_response.json()}", data=update_response.json())
             else:
-                return ReturnResponse(code=0, msg=f"device {name} 已存在, 更新成功!", data=update_response.json())
+                return ReturnResponse(code=0, msg=f"device {name} exists, updated successfully!", data=update_response.json())
         else:
             create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
             if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device {name} 创建失败! {create_response.json()}", data=create_response.json())
+                return ReturnResponse(code=1, msg=f"device {name} created failed! {create_response.json()}", data=create_response.json())
             else:
-                return ReturnResponse(code=0, msg=f"device {name} 创建成功!", data=create_response.json())
+                return ReturnResponse(code=0, msg=f"device {name} created successfully!", data=create_response.json())
     
     def set_primary_ip4_to_device(self, device_name, tenant, primary_ip4):
         api_url = '/api/dcim/devices/'
@@ -773,15 +795,15 @@ class NetboxClient:
         if contact_id:
             update_response = requests.put(url=self.url + api_url + f"{contact_id}/", headers=self.headers, json=data, timeout=self.timeout)
             if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact {name} 更新失败! {update_response.json()}", data=update_response.json())
+                return ReturnResponse(code=1, msg=f"contact [{name}] 更新失败! {update_response.json()}", data=update_response.json())
             else:
-                return ReturnResponse(code=0, msg=f"contact {name} 已存在, 更新成功!", data=update_response.json())
+                return ReturnResponse(code=0, msg=f"contact [{name}] 已存在, 更新成功!", data=update_response.json())
         else:
             create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
             if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact {name} 创建失败! {create_response.json()}", data=create_response.json())
+                return ReturnResponse(code=1, msg=f"contact [{name}] 创建失败! {create_response.json()}", data=create_response.json())
             else:
-                return ReturnResponse(code=0, msg=f"contact {name} 创建成功!", data=create_response.json())
+                return ReturnResponse(code=0, msg=f"contact [{name}] 创建成功!", data=create_response.json())
     
     def get_rack_id(self, name, tenant):
         api_url = '/api/dcim/racks/'
@@ -802,7 +824,8 @@ class NetboxClient:
                            name: str=None,
                            status: Literal['active', 'reserved', 'deprecated']='active',
                            tenant: str=None,
-                           u_height: int=None
+                           u_height: int=None,
+                           facility: str=None,
                         ):
         
         if status not in ['active', 'reserved', 'deprecated']:
@@ -814,7 +837,8 @@ class NetboxClient:
             "name": name,
             "status": status,
             "tenant": self.get_tenant_id(name=tenant),
-            "u_height": u_height
+            "u_height": u_height,
+            "facility": facility
         }
         data = Parse.remove_dict_none_value(data)
         rack_id = self.get_rack_id(name=name, tenant=tenant)
@@ -854,10 +878,16 @@ class NetboxClient:
         tag_id = self.get_tags_id(name=name)
         if tag_id:
             update_response = requests.put(url=self.url + api_url + f"{tag_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            return ReturnResponse(code=0, msg=f"tag {name} 已存在, 更新成功!", data=update_response.json())
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"tag {name} 更新失败! {update_response.json()}", data=update_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"tag {name} 已存在, 更新成功!", data=update_response.json())
         else:
             create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            return ReturnResponse(code=0, msg=f"tag {name} 创建成功!", data=create_response.json())
+            if create_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"tag {name} 创建失败! {create_response.json()}", data=create_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"tag {name} 创建成功!", data=create_response.json())
     
     def get_interface_id(self, device, name):
         api_url = '/api/dcim/interfaces/'
@@ -879,9 +909,11 @@ class NetboxClient:
     def add_or_update_interfaces(self, 
                                  name, 
                                  device, 
-                                 interface_type: Literal['1000base-tx', 'other']='other',
+                                 interface_type: Literal['1000base-t', '2.5gbase-t', '1gfc-sfp', 'cisco-stackwise', 'other']='other',
                                  tenant: str=None,
                                  label: str=None,
+                                 poe_mode: Literal['pd', 'pse']=None,
+                                 poe_type: Literal['type2-ieee802.3at']=None,
                                  description: str=None):
         api_url = '/api/dcim/interfaces/'
         data = {
@@ -893,6 +925,8 @@ class NetboxClient:
             # "type": type,
             # "mac_address": mac_address,
             # "lag": lag,
+            "poe_mode": poe_mode,
+            "poe_type": poe_type,
             "description": description,
         }
         data = Parse.remove_dict_none_value(data)
@@ -1073,11 +1107,121 @@ class NetboxClient:
             else:
                 return ReturnResponse(code=0, msg=f"site {name} 创建成功!", data=create_response.json())
     
-    def get_devices(self, tenant: str=None, device_type: str=None):
+    def get_devices(self, tenant: str=None, device_type: str=None, manufacturer: str=None):
+        url = f"{self.url}/api/dcim/devices/"
         params = {
             "tenant": tenant,
-            "device_type": device_type
+            "device_type": device_type,
+            "manufacturer_id": self.get_manufacturer_id(name=manufacturer),
+            "limit": 0
         }
         params = Parse.remove_dict_none_value(params)
-        r = requests.get(url=f'{self.url}/api/dcim/devices', headers=self.headers, timeout=self.timeout, params=params)
-        return r.json()['results']
+        results = []
+        while url:
+            r = requests.get(url=url, headers=self.headers, timeout=self.timeout, params=params)
+            data = r.json()
+            results.extend(data.get("results", []))
+
+            url = data.get("next")   # next 自带 offset/limit
+            params = None            # next 已经包含 query 了，别再重复传 params
+        return results
+    
+    def get_power_port_id(self, device, name):
+        api_url = '/api/dcim/power-ports/'
+        params = {
+            "name": name,
+            "device": device
+        }
+        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+        if response.json()['count'] > 1:
+            raise ValueError(f"power port {name} 存在多个结果")
+        elif response.json()['count'] == 0:
+            return None
+        else:
+            return response.json()['results'][0]['id']
+    
+    def add_or_update_power_ports(self, 
+                                  device, 
+                                  name, 
+                                  power_type: Literal['iec-60320-c14', 'other'],
+                                  label: str=None,
+                                  maximum_draw: int=None,
+                                  allocated_draw: int=None,
+                                  mark_connected: bool=True,
+                                  description: str=None,
+                            ):
+        '''
+        添加/更新电源端口
+
+        Args:
+            device (str): 设备名称
+            name (str): 电源端口名称
+            power_type (Literal['iec-60320-c14', 'other']): 电源类型
+            label (str, optional): 标签. Defaults to None.
+            maximum_draw (int, optional): 设备满载最大功率
+            allocated_draw (int, optional): 计划/分配”的功率, 如果不知道, 就和 maximum_draw 一样
+            mark_connected (bool, optional): 是否标记为已连接. Defaults to True.
+            description (str, optional): 描述. Defaults to None.
+        '''
+        api_url = '/api/dcim/power-ports/'
+        data = {
+            "device": self.get_device_id(name=device),
+            "name": name,
+            "type": power_type,
+            "label": label,
+            "maximum_draw": maximum_draw,
+            "allocated_draw": allocated_draw,
+            "mark_connected": mark_connected,
+            "description": description,
+        }
+        data = Parse.remove_dict_none_value(data)
+        power_port_id = self.get_power_port_id(name=name, device=device)
+        if power_port_id:
+            update_response = requests.put(url=self.url + api_url + f"{power_port_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"power port [{device} {name}] updated failed! {update_response.json()}", data=update_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"power port [{device} {name}] exists, updated successfully!", data=update_response.json())
+        else:
+            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
+            if create_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"power port [{device} {name}] created failed! {create_response.json()}", data=create_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"power port [{device} {name}] created successfully!", data=create_response.json())
+    
+    def get_console_port_id(self, device, name):
+        api_url = '/api/dcim/console-ports/'
+        params = {
+            "name": name,
+            "device": device
+        }
+        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
+        if response.json()['count'] > 1:
+            raise ValueError(f"console port {name} 存在多个结果")
+        elif response.json()['count'] == 0:
+            return None
+        else:
+            return response.json()['results'][0]['id']
+    
+    def add_or_update_console_port(self, device, name, port_type: Literal['rj-45']='rj-45', description: str=None):
+        api_url = '/api/dcim/console-ports/'
+        data = {
+            "device": self.get_device_id(name=device),
+            "name": name,
+            "type": port_type,
+            "description": description,
+        }
+        data = Parse.remove_dict_none_value(data)
+        console_port_id = self.get_console_port_id(name=name, device=device)
+        if console_port_id:
+            update_response = requests.put(url=self.url + api_url + f"{console_port_id}/", headers=self.headers, json=data, timeout=self.timeout)
+            if update_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"console port [{device} {name}] updated failed! {update_response.json()}", data=update_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"console port [{device} {name}] exists, updated successfully!", data=update_response.json())
+        else:
+            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
+            if create_response.status_code > 210:
+                return ReturnResponse(code=1, msg=f"console port [{device} {name}] created failed! {create_response.json()}", data=create_response.json())
+            else:
+                return ReturnResponse(code=0, msg=f"console port [{device} {name}] created successfully!", data=create_response.json())
