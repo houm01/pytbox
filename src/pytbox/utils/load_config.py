@@ -16,7 +16,9 @@ except ModuleNotFoundError:
         # 第三方 toml 库（文本文件）
         import toml  # type: ignore
         _TOML_NEEDS_BINARY_FILE = False
-from pytbox.onepassword_connect import OnePasswordConnect
+
+from ..onepassword_connect import OnePasswordConnect
+# from pytbox.onepassword_connect import OnePasswordConnect
 
 
 def _replace_values(data, oc=None, jsonfile_path=None):
