@@ -107,7 +107,7 @@ class Dida365:
                 try:
                     return ReturnResponse(code=0, msg='success', data=response.json())
                 except Exception:
-                    return ReturnResponse(code=1, msg='warning', data=response)
+                    return ReturnResponse(code=1, msg='未获取到清单', data=response)
         else:
             return ReturnResponse(code=1, msg='error', data=response.json())
 
@@ -286,6 +286,7 @@ class Dida365:
             return ReturnResponse(code=0, msg=f"获取到 {len(response.json())} 条 project", data=response.json())
         else:
             return ReturnResponse(code=1, msg=f"获取 project 失败: {response.status_code}", data=response.json())
-    
+
+
 if __name__ == "__main__":
     pass
