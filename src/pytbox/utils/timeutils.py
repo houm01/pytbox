@@ -220,14 +220,26 @@ class TimeUtils:
         return last_month_date_str
     
     @staticmethod
-    def get_current_time_str() -> str:
+    def get_current_time_str(time_format: Literal['%Y%m%d_%H%M', '%Y-%m-%d %H:%M:%S']='%Y%m%d_%H%M') -> str:
         # 获取当前日期和时间
         now = datetime.datetime.now()
 
         # 格式化为字符串
-        current_date_str = now.strftime("%Y%m%d_%H%M")
+        current_date_str = now.strftime(time_format)
         return current_date_str
-    
+
+    @staticmethod
+    def get_time_str(
+            time_format: Literal['%Y%m%d_%H%M', '%Y-%m-%d %H:%M:%S']='%Y%m%d_%H%M', 
+            offset_days: int=None,
+            offset_hours: int=None
+        ) -> str:
+        if offset_days is None:
+            offset_days = 0
+        if offset_hours is None:
+            offset_hours = 0
+        return (datetime.datetime.now() + datetime.timedelta(days=offset_days, hours=offset_hours)).strftime(time_format)
+
     @staticmethod
     def get_timestamp(now: bool=True, last_minutes: int=0, unit: Literal['ms', 's']='ms') -> int:
         '''
