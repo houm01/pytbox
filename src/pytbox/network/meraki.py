@@ -1169,7 +1169,7 @@ class Meraki:
 
     def bind_network_template(self, network_id: str, config_template_id: str, auto_bind: bool=False) -> ReturnResponse:
         '''
-        hhttps://developer.cisco.com/meraki/api-v1/bind-network/
+        https://developer.cisco.com/meraki/api-v1/bind-network/
         '''
         body = {
             "configTemplateId": config_template_id,
@@ -1184,6 +1184,20 @@ class Meraki:
         if r.status_code == 200:
             return ReturnResponse(code=0, msg=f"绑定模板 {config_template_id} 成功", data=None)
         return ReturnResponse(code=1, msg=f"绑定模板 {config_template_id} 失败: {r.status_code} - {r.text}", data=r.text)
+   
+    def unbind_network_template(self, network_id: str) -> ReturnResponse:
+        '''
+        https://developer.cisco.com/meraki/api-v1/unbind-network/
+        '''
+        r = requests.post(
+            url=f"{self.base_url}/networks/{network_id}/unbind",
+            headers=self.headers,
+            timeout=self.timeout,
+            json={"retainConfigs": True}
+        )
+        if r.status_code == 200:
+            return ReturnResponse(code=0, msg=f"解绑模板成功", data=None)
+        return ReturnResponse(code=1, msg=f"解绑模板失败: {r.status_code} - {r.text}", data=r.text)
    
     def update_network(self, network_id: str, tags: List[str]=None) -> ReturnResponse:
         '''
