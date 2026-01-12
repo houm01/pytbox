@@ -2,7 +2,7 @@
 
 import time
 import json
-from typing import Literal, Optional, Dict, List
+from typing import Literal, Optional, Dict, List, Any
 import requests
 from ..utils.response import ReturnResponse
 from ..utils.load_vm_devfile import load_dev_file
@@ -51,10 +51,94 @@ class VictoriaMetrics:
         }
         
         try:
-            response = requests.post(url, json=data, timeout=self.timeout)
+            # Use session for connection reuse (significantly faster for many inserts)
+            response = self.session.post(url, json=data, timeout=self.timeout)
             return ReturnResponse(code=0, msg=f"数据插入成功，状态码: {response.status_code}, metric_name: {metric_name}, labels: {labels}, value: {value}, timestamp: {timestamp}")
         except requests.RequestException as e:
             return ReturnResponse(code=1, msg=f"数据插入失败: {e}")
+
+    def insert_many(
+        self,
+        metric_name: str,
+        items: List[Dict[str, Any]],
+        batch_size: int = 500,
+    ) -> ReturnResponse:
+        """
+        Batch insert metrics via VictoriaMetrics /api/v1/import using NDJSON.
+
+        items:
+          - labels: Dict[str, Any]
+          - value: float|int (optional, default 1)
+          - timestamp: int ms (optional, default now; missing timestamps will be auto-filled)
+        """
+        if not items:
+            return ReturnResponse(
+                code=0,
+                msg=f"[vm][insert_many] metric [{metric_name}] empty items, skip",
+                data={"inserted": 0},
+            )
+
+        url = f"{self.url}/api/v1/import"
+        inserted = 0
+
+        # Keep timestamps close to "now" and unique when not provided.
+        base_ts = int(time.time() * 1000)
+
+        def _normalize_labels(raw: Dict[str, Any]) -> Dict[str, str]:
+            if raw is None:
+                return {}
+            out: Dict[str, str] = {}
+            for k, v in raw.items():
+                if v is None:
+                    out[k] = "None"
+                elif isinstance(v, bool):
+                    out[k] = str(v)
+                else:
+                    out[k] = str(v)
+            return out
+
+        headers = {"Content-Type": "application/x-ndjson"}
+
+        try:
+            for start in range(0, len(items), max(1, batch_size)):
+                chunk = items[start : start + max(1, batch_size)]
+                lines: List[str] = []
+                for i, item in enumerate(chunk):
+                    labels = _normalize_labels(item.get("labels", {}))
+                    value = item.get("value", 1)
+                    ts = item.get("timestamp")
+                    if ts is None:
+                        ts = base_ts + inserted + i
+
+                    payload = {
+                        "metric": {"__name__": metric_name, **labels},
+                        "values": [value],
+                        "timestamps": [ts],
+                    }
+                    lines.append(json.dumps(payload, ensure_ascii=False))
+
+                body = ("\n".join(lines) + "\n").encode("utf-8")
+                resp = self.session.post(url, data=body, headers=headers, timeout=self.timeout)
+                if resp.status_code > 210:
+                    return ReturnResponse(
+                        code=1,
+                        msg=f"[vm][insert_many][fail] metric [{metric_name}] http={resp.status_code} body={resp.text}",
+                        data={"inserted": inserted},
+                    )
+
+                inserted += len(chunk)
+
+            return ReturnResponse(
+                code=0,
+                msg=f"[vm][insert_many][ok] metric [{metric_name}] inserted={inserted}",
+                data={"inserted": inserted},
+            )
+        except requests.RequestException as e:
+            return ReturnResponse(
+                code=1,
+                msg=f"[vm][insert_many][fail] metric [{metric_name}] error={e}",
+                data={"inserted": inserted},
+            )
 
     def query(self, query: str=None, output_format: Literal['json']=None) -> ReturnResponse:
         '''
