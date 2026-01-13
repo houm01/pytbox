@@ -500,3 +500,92 @@ class VictoriaMetrics:
         r = self.query(query=f'snmp_interface_ifSpeed{{sysName="{sysname}", ifName="{ifname}"}}')
         speed = r.data[0]['value'][1]
         return int(int(speed) / 1000 / 1000)
+    
+    def get_viptela_bfd_sessions_up(self, 
+                                    sysname: str=None, 
+                                    session_up_lt: int=None, 
+                                    session_up_gt: int=None, 
+                                    last_minute: int=10, 
+                                    dev_file: str=None
+                                ) -> ReturnResponse:
+        '''
+        获取 viptela BFD 会话数
+
+        Args:
+            sysname (str, optional): 设备名称. Defaults to None.
+            session_up_lt (int, optional): 最近多少分钟内 BFD 会话数小于 session_up_lt. Defaults to None.
+            session_up_gt (int, optional): 最近多少分钟内 BFD 会话数大于 session_up_gt. Defaults to None.
+            last_minute (int, optional): 最近多少分钟. Defaults to 10.
+            dev_file (str, optional): 开发文件. Defaults to None.
+
+        Returns:
+            ReturnResponse: 
+                code: 0, msg: 获取到多少条数据, data: 数据列表
+                code: 1, msg: 错误信息, data: None
+        '''
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+            results = r.data['data']['result']
+            data = []
+            for result in results:
+                data.append(
+                    {
+                        "agent_host": result['metric']['agent_host'],
+                        "sysname": result['metric']['sysName'],
+                        "value": int(result['value'][1])
+                    }
+                )
+            return ReturnResponse(code=r.code, msg=f"获取到 {len(data)} 条数据", data=data)
+        else:
+            if sysname is None:
+                if session_up_lt is not None:
+                    query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp[{last_minute}m]) < {session_up_lt}'
+                elif session_up_gt is not None:
+                    query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp[{last_minute}m]) > {session_up_gt}'
+                else:
+                    return ReturnResponse(code=1, msg="sysname 和 session_up_lt 或 session_up_gt 不能同时为空")
+            else:
+                query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp{{sysName="{sysname}"}}[{last_minute}m]) > {session_up_gt}'
+                
+            r = self.query(query=query)
+            results = r.data
+
+            data = []
+            for result in results:
+                data.append(
+                    {
+                        "agent_host": result['metric']['agent_host'],
+                        "sysname": result['metric']['sysName'],
+                        "value": int(result['value'][1])
+                    }
+                )
+            return ReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
+
+    def get_viptela_bfd_session_list_state(self, sysname: str=None, last_minute: int=30, dev_file: str=None) -> ReturnResponse:
+        '''
+        获取 viptela BFD 会话列表状态
+
+        Args:
+            sysname (str, optional): 设备名称. Defaults to None.
+            last_minute (int, optional): 最近多少分钟. Defaults to 30.
+            dev_file (str, optional): 开发文件. Defaults to None.
+
+        Returns:
+            ReturnResponse: 
+        '''
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+        else:
+            query = f"""limitk(12,
+                sort_desc(
+                    max_over_time(
+                        vedge_snmp_bfd_bfdSessionsListState{{sysName="{sysname}"}}[{last_minute}m]
+                    )
+                )
+            )"""
+            r = self.query(query=query)
+        results = r.data['data']['result']
+        data = []
+        for result in results:
+            data.append(result['metric'] | {'value': result['value'][1]})
+        return ReturnResponse(code=r.code, msg=f"获取到 {len(data)} 条数据", data=data)

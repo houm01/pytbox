@@ -384,11 +384,13 @@ class Meraki:
             return ReturnResponse(code=3, msg=f"设备 {serial} 还未添加过", data=None)
         return ReturnResponse(code=1, msg=f"获取设备详情失败: {r.msg}", data=None)
 
-    def get_device_availability(self, network_id: list=None,
-                                  status: Literal['online', 'offline', 'dormant', 'alerting']=None,
-                                  serial: str=None,
-                                  tags: list=None,
-                                  get_all: bool=False) -> ReturnResponse:
+    def get_device_availability(self, 
+                               network_id: list=None,
+                               status: Any=None,
+                               serial: Any=None,
+                               tags: list=None,
+                               get_all: bool=False
+                           ) -> ReturnResponse:
         '''
         https://developer.cisco.com/meraki/api-v1/get-organization-devices-availabilities/
 
@@ -401,25 +403,23 @@ class Meraki:
         Returns:
             ReturnResponse: _description_
         '''
-        params = {}
+        # NOTE:
+        # Meraki Dashboard API expects array query params. In practice, this endpoint is strict:
+        # using `serials` may be treated as a string; `serials[]` is accepted as an array.
+        # We therefore use the bracket form consistently: serials[]/statuses[]/networkIds[]/tags[].
+        params: Dict[str, Any] = {}
         
         if status:
-            params["statuses[]"] = status
+            params["statuses[]"] = status if isinstance(status, list) else [status]
         
         if serial:
-            if isinstance(serial, str):
-                params["serials[]"] = [serial]
-            else:
-                params["serials[]"] = serial
+            params["serials[]"] = serial if isinstance(serial, list) else [serial]
         
         if network_id:
-            if isinstance(network_id, str):
-                params["networkIds[]"] = [network_id]
-            else:
-                params["networkIds[]"] = network_id 
+            params["networkIds"] = network_id if isinstance(network_id, list) else [network_id]
         
         if tags:
-            params["tags[]"] = tags
+            params["tags"] = tags
         
         # 如果需要获取所有数据，设置每页最大数量
         if get_all:
@@ -458,6 +458,8 @@ class Meraki:
                         url = link.split(';')[0].strip('<> ')
                         break
         
+        if len(all_data) == 0:
+            return ReturnResponse(code=1, msg=f"获取设备健康状态失败，没有数据", data=None)
         return ReturnResponse(code=0, msg=f"获取设备健康状态成功，共 {len(all_data)} 条", data=all_data)
 
 
