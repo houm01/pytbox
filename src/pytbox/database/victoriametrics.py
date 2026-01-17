@@ -548,18 +548,19 @@ class VictoriaMetrics:
                 query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp{{sysName="{sysname}"}}[{last_minute}m]) > {session_up_gt}'
                 
             r = self.query(query=query)
-            results = r.data
+            if r and r.code == 0:
+                results = r.data
 
-            data = []
-            for result in results:
-                data.append(
-                    {
-                        "agent_host": result['metric']['agent_host'],
-                        "sysname": result['metric']['sysName'],
-                        "value": int(result['value'][1])
-                    }
-                )
-            return ReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
+                data = []
+                for result in results:
+                    data.append(
+                        {
+                            "agent_host": result['metric']['agent_host'],
+                            "sysname": result['metric']['sysName'],
+                            "value": int(result['value'][1])
+                        }
+                    )
+                return ReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
 
     def get_viptela_bfd_session_list_state(self, sysname: str=None, last_minute: int=30, dev_file: str=None) -> ReturnResponse:
         '''
@@ -584,7 +585,10 @@ class VictoriaMetrics:
                 )
             )"""
             r = self.query(query=query)
-        results = r.data['data']['result']
+        try:
+            results = r.data['data']['result']
+        except TypeError:
+            results = r.data
         data = []
         for result in results:
             data.append(result['metric'] | {'value': result['value'][1]})

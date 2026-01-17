@@ -19,8 +19,9 @@ from pytbox.utils.cronjob import cronjob_counter
 from pytbox.notion import Notion
 from pytbox.mingdao import Mingdao
 # from pytbox.netbox import NetboxClient
-from pytbox.nebtox.client import NetboxClient
-
+from pytbox.netbox.client import NetboxClient
+from pytbox.cloud.aliyun import Aliyun
+from pytbox.cloud.volc import Volc
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
 
@@ -124,3 +125,18 @@ mingdao = Mingdao(app_key=config['mingdao']['app_key'], sign=config['mingdao']['
 
 netbox = NetboxClient(url=config['netbox']['url'], token=config['netbox']['token'])
 
+def get_aliyun() -> Aliyun:
+    ali = Aliyun(
+        ak=config['aliyun']['account1']['access_key_id'],
+        sk=config['aliyun']['account1']['access_key_secret'],
+        region='cn-beijing',
+    )
+    return ali
+
+def get_volc() -> Volc:
+    volc = Volc(
+        ak=config['volc']['account1']['access_key_id'],
+        sk=config['volc']['account1']['access_key_secret'],
+        region='cn-shanghai',
+    )
+    return volc
