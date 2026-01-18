@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 import volcenginesdkecs  # 来自 volcengine-python-sdk :contentReference[oaicite:5]{index=5}
 from ...utils.response import ReturnResponse
 
+
 class ECSResource:
     def __init__(self, client):
         self._c = client
@@ -39,4 +40,3 @@ class ECSResource:
         resp = self._c.call("ecs_list", lambda: self._api.describe_instances(req))
         data = resp.to_dict()
         return ReturnResponse(code=0, msg='success', data=data['instances'])
-        # print(data)

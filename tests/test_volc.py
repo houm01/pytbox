@@ -10,7 +10,7 @@ r = volc.cloudmonitor.get_metric_data(
     namespace="VCM_ECS",
     sub_namespace="Instance",
     metric_name="CpuTotal",
-    # dimensions={"InstanceId": "i-ye48tx79c0k36d189z27"},
+    dimensions={"ResourceID": "i-ye837dh2ios6ipm6hl01"},
     last_minute=5,
 )
 print(r)

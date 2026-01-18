@@ -11,6 +11,8 @@ from volcenginesdkvolcobserve.models.instance_for_get_metric_data_input import (
 )
 from volcenginesdkvolcobserve.models.get_metric_data_request import GetMetricDataRequest
 
+from ...utils.response import ReturnResponse
+
 
 class CloudMonitorResource:
     """
@@ -35,9 +37,10 @@ class CloudMonitorResource:
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
         last_minute: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> ReturnResponse:
         """
         查询监控数据（GetMetricData）
+        https://console.volcengine.com/cloud_monitor/docs?namespace=VCM_ECS
 
         - dimensions: dict 形式，例如 {"InstanceId": "i-xxx"}（按文档要求的 key）
         - start_time/end_time: 秒级时间戳；不传则用 last_minute 生成
@@ -72,7 +75,7 @@ class CloudMonitorResource:
 
         # SDK response 通常有 to_dict()
         if hasattr(resp, "to_dict"):
-            return resp.to_dict()
-        if hasattr(resp, "to_map"):
-            return resp.to_map()
-        return getattr(resp, "__dict__", {})
+            try:
+                return ReturnResponse(code=0, msg='success', data=resp.to_dict()['data'])
+            except Exception as e:
+                return ReturnResponse(code=1, msg=f'error: {e}', data=None)
