@@ -4,11 +4,11 @@ from typing import List, Dict, Any, Optional
 from alibabacloud_ecs20140526 import models as ecs_models
 from ...utils.response import ReturnResponse
 
+
 class ECSResource:
     def __init__(self, client):
         self._c = client
-
-
+        
     def list(
         self,
         *,

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from alibabacloud_tea_openapi import models as open_api_models
 from alibabacloud_ecs20140526 import client as ecs_client
-from alibabacloud_cms20190101 import client as cms_client
+from alibabacloud_cms20190101.client import Client as Cms20190101Client
 from Tea.exceptions import TeaException
 
 from pytbox.cloud.aliyun.errors import map_tea_exception
@@ -42,7 +42,7 @@ class AliyunClient:
             config.endpoint = self.cfg.ecs_endpoint
         return ecs_client.Client(config)
 
-    def _create_cms_client(self) -> cms_client.Client:
+    def _create_cms_client(self) -> Cms20190101Client:
         config = open_api_models.Config(
             access_key_id=self.creds.ak,
             access_key_secret=self.creds.sk,
@@ -50,14 +50,14 @@ class AliyunClient:
         )
         if self.cfg.cms_endpoint:
             config.endpoint = self.cfg.cms_endpoint
-        return cms_client.Client(config)
+        return Cms20190101Client(config)
 
     @property
     def ecs(self) -> ecs_client.Client:
         return self._ecs
 
     @property
-    def cms(self) -> cms_client.Client:
+    def cms(self) -> Cms20190101Client:
         return self._cms
 
     def call(self, action: str, fn):

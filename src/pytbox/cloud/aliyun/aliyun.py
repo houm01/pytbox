@@ -40,7 +40,7 @@ class Aliyun:
                 retries=opt.retries,
                 retry_backoff_s=opt.retry_backoff_s,
                 ecs_endpoint=opt.ecs_endpoint,
-                cms_endpoint=opt.cms_endpoint,
+                cms_endpoint=f'metrics.{region}.aliyuncs.com',
             ),
         )
 
