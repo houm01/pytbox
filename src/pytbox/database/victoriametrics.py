@@ -548,19 +548,18 @@ class VictoriaMetrics:
                 query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp{{sysName="{sysname}"}}[{last_minute}m]) > {session_up_gt}'
                 
             r = self.query(query=query)
-            if r and r.code == 0:
-                results = r.data
+            results = r.data
 
-                data = []
-                for result in results:
-                    data.append(
-                        {
-                            "agent_host": result['metric']['agent_host'],
-                            "sysname": result['metric']['sysName'],
-                            "value": int(result['value'][1])
-                        }
-                    )
-                return ReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
+            data = []
+            for result in results:
+                data.append(
+                    {
+                        "agent_host": result['metric']['agent_host'],
+                        "sysname": result['metric']['sysName'],
+                        "value": int(result['value'][1])
+                    }
+                )
+            return ReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
 
     def get_viptela_bfd_session_list_state(self, sysname: str=None, last_minute: int=30, dev_file: str=None) -> ReturnResponse:
         '''
@@ -585,11 +584,92 @@ class VictoriaMetrics:
                 )
             )"""
             r = self.query(query=query)
-        try:
-            results = r.data['data']['result']
-        except TypeError:
-            results = r.data
+        results = r.data['data']['result']
         data = []
         for result in results:
             data.append(result['metric'] | {'value': result['value'][1]})
         return ReturnResponse(code=r.code, msg=f"获取到 {len(data)} 条数据", data=data)
+    
+    def get_apc_input_status(self, 
+                             sysname: str=None,
+                             last_minutes: int=5,
+                             threshold: int=3,
+                             dev_file: str=None) -> ReturnResponse:
+        '''
+        获取 UPS 输入状态
+
+        Args:
+            sysname (str, optional): 设备名称. Defaults to None.
+            last_minutes (int, optional): 最近多少分钟. Defaults to 5.
+            threshold (int, optional): 连续多少分钟小于阈值. Defaults to 3.
+            dev_file (str, optional): 开发文件. Defaults to None.
+
+        Returns:
+            ReturnResponse: 
+                code: 0, msg: 获取到多少条数据, data: 数据列表
+                code: 1, msg: 错误信息, data: None
+        '''
+        if sysname is None:
+            query = f'count_over_time((snmp_upsInput_upsAdvInputLineVoltage < 1)[{last_minutes}m:1m]) >= {threshold}'
+        else:
+            query = f'count_over_time((snmp_upsInput_upsAdvInputLineVoltage{{sysName="{sysname}"}} > 1)[{last_minutes}m:1m]) >= {threshold}'
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=query)
+        
+        if r.code == 0:
+            return ReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data})
+        else:
+            return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
+
+
+    def get_apc_battery_replace_status(self, 
+                             sysname: str=None,
+                             last_minutes: int=5,
+                             threshold: int=3,
+                             dev_file: str=None) -> ReturnResponse:
+        '''
+        获取 UPS 电池更换状态
+
+        Args:
+            sysname (str, optional): 设备名称. Defaults to None.
+            last_minutes (int, optional): 最近多少分钟. Defaults to 5.
+            threshold (int, optional): 连续多少分钟小于阈值. Defaults to 3.
+            dev_file (str, optional): 开发文件. Defaults to None.
+
+        Returns:
+            ReturnResponse: 
+                code: 0, msg: 获取到多少条数据, data: 数据列表
+                code: 1, msg: 错误信息, data: None
+        '''
+        if sysname is None:
+            query = f'count_over_time((snmp_upsBattery_upsAdvBatteryReplaceIndicator == 2)[{last_minutes}m:1m]) >= {threshold}'
+        else:
+            query = f'count_over_time((snmp_upsBattery_upsAdvBatteryReplaceIndicator{{sysName="{sysname}"}} == 1)[{last_minutes}m:1m]) >= {threshold}'
+            
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=query)
+        
+        if r.code == 0:
+            return ReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data})
+        else:
+            return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
+    
+    def get_system_uptime(self, sysname: str=None, uptime_lt_minute: int=None, dev_file: str=None) -> ReturnResponse:
+        if sysname is None and uptime_lt_minute is not None:
+            query = f'snmp_sysUpTime < {uptime_lt_minute * 60}'
+        else:
+            query = f'snmp_sysUpTime{{sysName="{sysname}"}}'
+            
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=query)
+        
+        if r.code == 0:
+            return ReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data, 'uptime_minute': int(float(r.data[0]['value'][1]) / 60)})
+        else:
+            return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
