@@ -296,9 +296,10 @@ class VictoriaMetrics:
 
     def check_interface_rate(self,
                              direction: Literal['in', 'out'],
-                             sysName: str, 
-                             ifName:str, 
-                             last_minutes: Optional[int] = None
+                             sysname: str, 
+                             ifname:str, 
+                             last_n_minutes: Optional[int] = None,
+                             dev_file: str=None
                             ) -> ReturnResponse:
         """查询指定设备的入方向总流量速率（bps）。
 
@@ -313,12 +314,33 @@ class VictoriaMetrics:
             ReturnResponse: 查询结果包装。
         """
         if direction == 'in':
-            query = f'(rate(snmp_interface_ifHCInOctets{{sysName="{sysName}", ifName="{ifName}"}}[{last_minutes}m])) * 8 / 1000000'
+            query = f'(rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_n_minutes}m])) * 8 / 1000000'
         else:
-            query = f'(rate(snmp_interface_ifHCOutOctets{{sysName="{sysName}", ifName="{ifName}"}}[{last_minutes}m])) * 8 / 1000000'
-        r = self.query(query)
-        rate = r.data[0]['value'][1]
-        return int(float(rate))
+            query = f'(rate(snmp_interface_ifHCOutOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_n_minutes}m])) * 8 / 1000000'
+        
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+        else:
+            r = self.query(query=query)
+        
+        if r.code == 0:
+            return ReturnResponse(
+                code=0, 
+                msg=f"{sysname} {ifname} 最近 {last_n_minutes} 分钟 {direction} 方向流量速率为 {r.data[0]['value'][1]} Mbit/s", 
+                data={
+                    'query': query,
+                    'data': int(float(r.data[0]['value'][1]))
+                }
+            )
+        else:
+            return ReturnResponse(
+                code=1, 
+                msg=f"查询 {sysname} {ifname} 最近 {last_n_minutes} 分钟 {direction} 方向流量速率失败, 错误信息: {r.msg}", 
+                data={
+                    'query': query,
+                    'data': None
+                }
+            )
     
     def check_interface_avg_rate(self,
                                  direction: Literal['in', 'out'],
@@ -574,6 +596,7 @@ class VictoriaMetrics:
             ReturnResponse: 
         '''
         if dev_file is not None:
+            query = None
             r = load_dev_file(dev_file)
         else:
             query = f"""limitk(12,
@@ -584,11 +607,13 @@ class VictoriaMetrics:
                 )
             )"""
             r = self.query(query=query)
-        results = r.data['data']['result']
-        data = []
-        for result in results:
-            data.append(result['metric'] | {'value': result['value'][1]})
-        return ReturnResponse(code=r.code, msg=f"获取到 {len(data)} 条数据", data=data)
+
+        if r.code == 0:
+            results = r.data
+            data = []
+            for result in results:
+                data.append(result['metric'] | {'value': result['value'][1]})
+            return ReturnResponse(code=0, msg=f"获取到 {len(data)} 条数据", data={'query': query, 'data': data})
     
     def get_apc_input_status(self, 
                              sysname: str=None,
