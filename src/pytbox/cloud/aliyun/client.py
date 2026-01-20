@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from alibabacloud_tea_openapi import models as open_api_models
 from alibabacloud_ecs20140526 import client as ecs_client
 from alibabacloud_cms20190101.client import Client as Cms20190101Client
+from alibabacloud_ram20150501.client import Client as Ram20150501Client
 from Tea.exceptions import TeaException
 
 from pytbox.cloud.aliyun.errors import map_tea_exception
@@ -23,6 +24,7 @@ class AliyunConfig:
     retry_backoff_s: float = 0.5
     ecs_endpoint: str | None = None
     cms_endpoint: str | None = None
+    ram_endpoint: str | None = None
 
 
 class AliyunClient:
@@ -31,6 +33,7 @@ class AliyunClient:
         self.cfg = cfg
         self._ecs = self._create_ecs_client()
         self._cms = self._create_cms_client()
+        self._ram = self._create_ram_client()
 
     def _create_ecs_client(self) -> ecs_client.Client:
         config = open_api_models.Config(
@@ -52,6 +55,16 @@ class AliyunClient:
             config.endpoint = self.cfg.cms_endpoint
         return Cms20190101Client(config)
 
+    def _create_ram_client(self) -> Ram20150501Client:
+        config = open_api_models.Config(
+            access_key_id=self.creds.ak,
+            access_key_secret=self.creds.sk,
+            region_id=self.cfg.region,
+        )
+        if self.cfg.ram_endpoint:
+            config.endpoint = self.cfg.ram_endpoint
+        return Ram20150501Client(config)
+
     @property
     def ecs(self) -> ecs_client.Client:
         return self._ecs
@@ -59,6 +72,10 @@ class AliyunClient:
     @property
     def cms(self) -> Cms20190101Client:
         return self._cms
+
+    @property
+    def ram(self) -> Ram20150501Client:
+        return self._ram
 
     def call(self, action: str, fn):
         """

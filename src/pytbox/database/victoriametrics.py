@@ -326,7 +326,7 @@ class VictoriaMetrics:
         if r.code == 0:
             return ReturnResponse(
                 code=0, 
-                msg=f"{sysname} {ifname} 最近 {last_n_minutes} 分钟 {direction} 方向流量速率为 {r.data[0]['value'][1]} Mbit/s", 
+                msg=f"{sysname} {ifname} 最近 {last_n_minutes} 分钟 {direction} 方向流量速率为 {int(r.data[0]['value'][1])} Mbit/s", 
                 data={
                     'query': query,
                     'data': int(float(r.data[0]['value'][1]))
@@ -518,10 +518,24 @@ class VictoriaMetrics:
         r = self.query(query=f'snmp_interface_ifOperStatus{{sysName="{sysname}"}}')
         return r
     
-    def get_snmp_interface_speed(self, sysname, ifname):
-        r = self.query(query=f'snmp_interface_ifSpeed{{sysName="{sysname}", ifName="{ifname}"}}')
-        speed = r.data[0]['value'][1]
-        return int(int(speed) / 1000 / 1000)
+    def get_snmp_interface_oper_status(self, 
+                                       sysname: str=None, 
+                                       ifname: str=None, 
+                                       sysname_repr: str=None,
+                                       ifname_list: list=[], 
+                                       dev_file: str=None
+                                    ) -> ReturnResponse:
+        if dev_file is not None:
+            r = load_dev_file(dev_file)
+        else:
+            if ifname_list and sysname_repr:
+                query = f'snmp_interface_ifOperStatus{{sysName=~"{sysname_repr}", ifName=~"^({'|'.join(ifname_list)})$"}}'
+            else:
+                query = f'snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{ifname}"}}'
+            print(query)
+            r = self.query(query=query)
+        
+        return r
     
     def get_viptela_bfd_sessions_up(self, 
                                     sysname: str=None, 
@@ -573,6 +587,8 @@ class VictoriaMetrics:
             results = r.data
 
             data = []
+            if isinstance(results, dict) and not results['data'].get('result'):
+                return ReturnResponse(code=1, msg=f"满足条件的有0条数据", data=data)
             for result in results:
                 data.append(
                     {

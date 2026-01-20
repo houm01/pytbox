@@ -21,7 +21,6 @@ from pytbox.mingdao import Mingdao
 # from pytbox.netbox import NetboxClient
 from pytbox.netbox.client import NetboxClient
 from pytbox.cloud.aliyun import Aliyun
-from pytbox.cloud.aliyun.aliyun import AliyunOptions
 from pytbox.cloud.volc import Volc
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
@@ -127,15 +126,21 @@ mingdao = Mingdao(app_key=config['mingdao']['app_key'], sign=config['mingdao']['
 netbox = NetboxClient(url=config['netbox']['url'], token=config['netbox']['token'])
 
 def get_aliyun() -> Aliyun:
-    region = config['aliyun']['account1'].get('region', 'cn-hangzhou')
-    cms_endpoint = config['aliyun']['account1'].get('cms_endpoint')
     ali = Aliyun(
         ak=config['aliyun']['account1']['access_key_id'],
         sk=config['aliyun']['account1']['access_key_secret'],
-        region=region,
-        options=AliyunOptions(cms_endpoint=cms_endpoint),
+        region='cn-beijing',
     )
     return ali
+
+def get_aliyun_tyun() -> Aliyun:
+    ali = Aliyun(
+        ak=config['aliyun']['account_tyun']['access_key_id'],
+        sk=config['aliyun']['account_tyun']['access_key_secret'],
+        region='cn-shanghai',
+    )
+    return ali
+
 
 def get_volc() -> Volc:
     volc = Volc(

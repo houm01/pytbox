@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pytbox.cloud.aliyun.client import AliyunClient, AliyunCreds, AliyunConfig
 from pytbox.cloud.aliyun.ecs import ECSResource
 from pytbox.cloud.aliyun.cms import CMSResource
+from pytbox.cloud.aliyun.ram import RAMResource
 
 
 @dataclass(frozen=True)
@@ -46,3 +47,4 @@ class Aliyun:
 
         self.ecs = ECSResource(self._client)
         self.cms = CMSResource(self._client)
+        self.ram = RAMResource(self._client)
