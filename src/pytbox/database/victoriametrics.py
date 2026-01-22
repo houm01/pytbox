@@ -555,8 +555,14 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to None.
 
         Returns:
-            ReturnResponse: 
-                code: 0, msg: 获取到多少条数据, data: 数据列表
+            ReturnResponse:
+                code: 0, msg: 状态描述, data:
+                    query: 查询语句
+                    data: 查询结果列表
+                    status: "fault" 或 "normal"
+                    status_msg: 状态说明
+                    mode: "fault_check" 或 "recovery_check"
+                    sysname: 设备名称或 None
                 code: 1, msg: 错误信息, data: None
         '''
         if dev_file is not None:
@@ -651,16 +657,44 @@ class VictoriaMetrics:
                 code: 1, msg: 错误信息, data: None
         '''
         if sysname is None:
-            query = f'count_over_time((snmp_upsInput_upsAdvInputLineVoltage < 1)[{last_minutes}m:1m]) >= {threshold}'
+            # 全量查询：近 last_minutes 分钟内，累计低电压点数达到阈值判定为中断
+            query = (
+                "count_over_time((snmp_upsInput_upsAdvInputLineVoltage < 1)"
+                f"[{last_minutes}m:1m]) >= {threshold}"
+            )
         else:
-            query = f'count_over_time((snmp_upsInput_upsAdvInputLineVoltage{{sysName="{sysname}"}} > 1)[{last_minutes}m:1m]) >= {threshold}'
+            # 单设备查询：近 threshold 分钟内没有低电压点才算恢复
+            query = (
+                "count_over_time((snmp_upsInput_upsAdvInputLineVoltage"
+                f'{{sysName="{sysname}"}} <= 1)[{threshold}m:1m]) == 0'
+            )
         if dev_file is not None:
             r = load_dev_file(dev_file)
         else:
             r = self.query(query=query)
         
         if r.code == 0:
-            return ReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data})
+            data = r.data or []
+            if sysname is None:
+                status = "fault" if len(data) > 0 else "normal"
+                status_msg = "存在中断设备" if len(data) > 0 else "未发现中断设备"
+                mode = "fault_check"
+            else:
+                status = "normal" if len(data) > 0 else "fault"
+                status_msg = "市电已恢复" if len(data) > 0 else "市电仍中断"
+                mode = "recovery_check"
+            return ReturnResponse(
+                code=r.code,
+                msg=status_msg,
+                data={
+                    'query': query,
+                    'data': data,
+                    'status': status,
+                    'status_msg': status_msg,
+                    'mode': mode,
+                    'sysname': sysname,
+                },
+            )
         else:
             return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
 
@@ -680,14 +714,28 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to None.
 
         Returns:
-            ReturnResponse: 
-                code: 0, msg: 获取到多少条数据, data: 数据列表
+            ReturnResponse:
+                code: 0, msg: 状态描述, data:
+                    query: 查询语句
+                    data: 查询结果列表
+                    status: "fault" 或 "normal"
+                    status_msg: 状态说明
+                    mode: "fault_check" 或 "recovery_check"
+                    sysname: 设备名称或 None
                 code: 1, msg: 错误信息, data: None
         '''
         if sysname is None:
-            query = f'count_over_time((snmp_upsBattery_upsAdvBatteryReplaceIndicator == 2)[{last_minutes}m:1m]) >= {threshold}'
+            # 全量查询：近 last_minutes 分钟内，累计需要更换点数达到阈值判定为异常
+            query = (
+                "count_over_time((snmp_upsBattery_upsAdvBatteryReplaceIndicator == 2)"
+                f"[{last_minutes}m:1m]) >= {threshold}"
+            )
         else:
-            query = f'count_over_time((snmp_upsBattery_upsAdvBatteryReplaceIndicator{{sysName="{sysname}"}} == 1)[{last_minutes}m:1m]) >= {threshold}'
+            # 单设备查询：近 threshold 分钟内没有更换点才算恢复
+            query = (
+                "count_over_time((snmp_upsBattery_upsAdvBatteryReplaceIndicator"
+                f'{{sysName="{sysname}"}} == 2)[{threshold}m:1m]) == 0'
+            )
             
         if dev_file is not None:
             r = load_dev_file(dev_file)
@@ -695,7 +743,27 @@ class VictoriaMetrics:
             r = self.query(query=query)
         
         if r.code == 0:
-            return ReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data})
+            data = r.data or []
+            if sysname is None:
+                status = "fault" if len(data) > 0 else "normal"
+                status_msg = "存在需要更换电池的设备" if len(data) > 0 else "未发现需要更换电池的设备"
+                mode = "fault_check"
+            else:
+                status = "normal" if len(data) > 0 else "fault"
+                status_msg = "电池更换告警已恢复" if len(data) > 0 else "电池更换告警仍存在"
+                mode = "recovery_check"
+            return ReturnResponse(
+                code=r.code,
+                msg=status_msg,
+                data={
+                    'query': query,
+                    'data': data,
+                    'status': status,
+                    'status_msg': status_msg,
+                    'mode': mode,
+                    'sysname': sysname,
+                },
+            )
         else:
             return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
     
