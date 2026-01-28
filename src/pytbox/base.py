@@ -22,6 +22,9 @@ from pytbox.mingdao import Mingdao
 from pytbox.netbox.client import NetboxClient
 from pytbox.cloud.aliyun import Aliyun
 from pytbox.cloud.volc import Volc
+from pytbox.database.vm.backend import HTTPBackend
+from pytbox.database.vm.client import VictoriaMetricsClient
+
 
 config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
 
@@ -149,3 +152,8 @@ def get_volc() -> Volc:
         region='cn-shanghai',
     )
     return volc
+
+
+def get_vm_client() -> VictoriaMetricsClient:
+    backend = HTTPBackend(base_url=config['victoriametrics']['url'], timeout=10)
+    return VictoriaMetricsClient(backend)

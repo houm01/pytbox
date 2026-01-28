@@ -1,0 +1,4 @@
+
+=== PromQL used ===
+min_over_time(ping_result_code[10m]) > 0
+min_over_time(ping_result_code{target="10.20.3.108"}[10m]) > 0

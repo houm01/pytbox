@@ -209,3 +209,5 @@ base.py
 test_jira.py
 *.csv
 tests/*.csv
+
+fixtures/

@@ -2,10 +2,16 @@
 
 import time
 import json
-from typing import Literal, Optional, Dict, List, Any
+from typing import Literal, Optional, Dict, List, Any, Union
 import requests
-from ..utils.response import ReturnResponse
+from ..utils.response import ReturnResponse as OldReturnResponse
 from ..utils.load_vm_devfile import load_dev_file
+
+from ..schemas.response import ReturnResponse
+from ..schemas.codes import RespCode
+from ..schemas.vm_query import VMInstantQueryResponse, VMInstantSeries
+
+
 
 
 class VictoriaMetrics:
@@ -21,7 +27,7 @@ class VictoriaMetrics:
         self.env = env
 
     def insert(self, metric_name: str = '', labels: Dict[str, str] = None, 
-               value: List[float] = None, timestamp: int = None) -> ReturnResponse:
+               value: List[float] = None, timestamp: int = None) -> OldReturnResponse:
         """插入指标数据。
         
         Args:
@@ -53,16 +59,16 @@ class VictoriaMetrics:
         try:
             # Use session for connection reuse (significantly faster for many inserts)
             response = self.session.post(url, json=data, timeout=self.timeout)
-            return ReturnResponse(code=0, msg=f"数据插入成功，状态码: {response.status_code}, metric_name: {metric_name}, labels: {labels}, value: {value}, timestamp: {timestamp}")
+            return OldReturnResponse(code=0, msg=f"数据插入成功，状态码: {response.status_code}, metric_name: {metric_name}, labels: {labels}, value: {value}, timestamp: {timestamp}")
         except requests.RequestException as e:
-            return ReturnResponse(code=1, msg=f"数据插入失败: {e}")
+            return OldReturnResponse(code=1, msg=f"数据插入失败: {e}")
 
     def insert_many(
         self,
         metric_name: str,
         items: List[Dict[str, Any]],
         batch_size: int = 500,
-    ) -> ReturnResponse:
+    ) -> OldReturnResponse:
         """
         Batch insert metrics via VictoriaMetrics /api/v1/import using NDJSON.
 
@@ -72,7 +78,7 @@ class VictoriaMetrics:
           - timestamp: int ms (optional, default now; missing timestamps will be auto-filled)
         """
         if not items:
-            return ReturnResponse(
+            return OldReturnResponse(
                 code=0,
                 msg=f"[vm][insert_many] metric [{metric_name}] empty items, skip",
                 data={"inserted": 0},
@@ -120,7 +126,7 @@ class VictoriaMetrics:
                 body = ("\n".join(lines) + "\n").encode("utf-8")
                 resp = self.session.post(url, data=body, headers=headers, timeout=self.timeout)
                 if resp.status_code > 210:
-                    return ReturnResponse(
+                    return OldReturnResponse(
                         code=1,
                         msg=f"[vm][insert_many][fail] metric [{metric_name}] http={resp.status_code} body={resp.text}",
                         data={"inserted": inserted},
@@ -128,19 +134,19 @@ class VictoriaMetrics:
 
                 inserted += len(chunk)
 
-            return ReturnResponse(
+            return OldReturnResponse(
                 code=0,
                 msg=f"[vm][insert_many][ok] metric [{metric_name}] inserted={inserted}",
                 data={"inserted": inserted},
             )
         except requests.RequestException as e:
-            return ReturnResponse(
+            return OldReturnResponse(
                 code=1,
                 msg=f"[vm][insert_many][fail] metric [{metric_name}] error={e}",
                 data={"inserted": inserted},
             )
 
-    def query(self, query: str=None, output_format: Literal['json']=None) -> ReturnResponse:
+    def query(self, query: str=None, output_format: Literal['json']=None) -> OldReturnResponse:
         '''
         查询指标数据
 
@@ -175,14 +181,71 @@ class VictoriaMetrics:
             msg = f"[{query}] 查询失败: {res_json.get('error')}"
             data = res_json
 
-        resp = ReturnResponse(code=code, msg=msg, data=data)
+        resp = OldReturnResponse(code=code, msg=msg, data=data)
 
         if is_json:
             json_result = json.dumps(resp.__dict__, ensure_ascii=False)
             return json_result
         else:
             return resp
-
+    
+    def query_instant(
+        self, 
+        query: Optional[str] = None
+    ) -> ReturnResponse:
+        url = f'{self.url}/prometheus/api/v1/query'
+        try:
+            r = requests.get(url, timeout=self.timeout, params={'query': query})
+            r.raise_for_status()
+            res_json = r.json()
+        except requests.RequestException as e:
+            resp = ReturnResponse.fail(
+                RespCode.VM_REQUEST_FAILED, 
+                msg=f'查询失败: {e}',
+                data=None
+            )
+            return resp
+        except ValueError as e:
+            resp = ReturnResponse.fail(
+                RespCode.VM_BAD_PAYLOAD,
+                msg=f"[{query}] VM 返回非 JSON: {e}",
+                data=None
+            )
+            return resp
+        
+        status = res_json.get('status')
+        if status != 'success':
+            resp = ReturnResponse.fail(
+                RespCode.VM_QUERY_FAILED,
+                msg=f"[{query}] 查询失败: {res_json.get('error')}",
+                data=res_json
+            )
+            return resp
+        raw_result = res_json.get("data", {}).get("result", [])
+        if not raw_result:
+            resp = ReturnResponse.no_data(
+                msg=f"[{query}] 没有查询到结果",
+                data=[]
+            )
+            return resp
+        
+        try:
+            series_list = [VMInstantSeries(**item) for item in raw_result]
+        except ValidationError as e:
+            resp = ReturnResponse.fail(
+                RespCode.VM_BAD_PAYLOAD,
+                msg=f"[{query}] 返回结构不符合预期",
+                data=str(e)
+            )
+            return resp
+        
+        resp_typed = VMInstantQueryResponse(
+            code=int(RespCode.OK),
+            msg=f"[{query}] 查询成功!",
+            data=series_list
+        )
+        return resp_typed
+        
     def query_range(self, query):
         '''
         查询指标数据
@@ -222,23 +285,23 @@ class VictoriaMetrics:
         #     msg = f"[{query}] 查询失败: {res_json.get('error')}"
         #     data = res_json
 
-        # resp = ReturnResponse(code=code, msg=msg, data=data)
+        # resp = OldReturnResponse(code=code, msg=msg, data=data)
 
         # if is_json:
         #     json_result = json.dumps(resp.__dict__, ensure_ascii=False)
         #     return json_result
         # else:
         #     return resp
-    def get_labels(self, metric_name: str) -> ReturnResponse:
+    def get_labels(self, metric_name: str) -> OldReturnResponse:
         url = f"{self.url}/api/v1/series?match[]={metric_name}"
         response = requests.get(url, timeout=self.timeout)
         results = response.json()
         if results['status'] == 'success':
-            return ReturnResponse(code=0, msg=f"metric name: {metric_name} 获取到 {len(results['data'])} 条数据", data=results['data'])
+            return OldReturnResponse(code=0, msg=f"metric name: {metric_name} 获取到 {len(results['data'])} 条数据", data=results['data'])
         else:
-            return ReturnResponse(code=1, msg=f"metric name: {metric_name} 查询失败")
+            return OldReturnResponse(code=1, msg=f"metric name: {metric_name} 查询失败")
 
-    def check_ping_result(self, target: str, last_minute: int=10, env: str='prod', dev_file: str='') -> ReturnResponse:
+    def check_ping_result(self, target: str, last_minute: int=10, env: str='prod', dev_file: str='') -> OldReturnResponse:
         '''
         检查ping结果
 
@@ -249,7 +312,7 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to ''.
 
         Returns:
-            ReturnResponse: 
+            OldReturnResponse: 
                 code = 0 正常, code = 1 异常, code = 2 没有查询到数据, 建议将其判断为正常
         '''
         query = f'min_over_time(ping_result_code{{target="{target}"}}[{last_minute}m])'
@@ -266,13 +329,13 @@ class VictoriaMetrics:
                 value = r.data[0]['value'][1]
                 
             if value == '0':
-                return ReturnResponse(code=0, msg=f"已检查 {target} 最近 {last_minute} 分钟是正常的!", data=r.data)
+                return OldReturnResponse(code=0, msg=f"已检查 {target} 最近 {last_minute} 分钟是正常的!", data=r.data)
             else:
-                return ReturnResponse(code=1, msg=f"已检查 {target} 最近 {last_minute} 分钟是异常的!", data=r.data)
+                return OldReturnResponse(code=1, msg=f"已检查 {target} 最近 {last_minute} 分钟是异常的!", data=r.data)
         else:
             return r
 
-    def check_unreachable_ping_result(self, dev_file: str='') -> ReturnResponse:
+    def check_unreachable_ping_result(self, dev_file: str='') -> OldReturnResponse:
         '''
         检查ping结果
 
@@ -283,7 +346,7 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to ''.
 
         Returns:
-            ReturnResponse: 
+            OldReturnResponse: 
                 code = 0 正常, code = 1 异常, code = 2 没有查询到数据, 建议将其判断为正常
         '''
         query = "ping_result_code == 1"
@@ -300,7 +363,7 @@ class VictoriaMetrics:
                              ifname:str, 
                              last_n_minutes: Optional[int] = None,
                              dev_file: str=None
-                            ) -> ReturnResponse:
+                            ) -> OldReturnResponse:
         """查询指定设备的入方向总流量速率（bps）。
 
         使用 PromQL 对 `snmp_interface_ifHCInOctets` 进行速率计算并聚合到设备级别，
@@ -311,7 +374,7 @@ class VictoriaMetrics:
             last_minutes: 计算速率的时间窗口（分钟）。未提供时默认使用 5 分钟窗口。
 
         Returns:
-            ReturnResponse: 查询结果包装。
+            OldReturnResponse: 查询结果包装。
         """
         if direction == 'in':
             query = f'(rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_n_minutes}m])) * 8 / 1000000'
@@ -324,7 +387,7 @@ class VictoriaMetrics:
             r = self.query(query=query)
         
         if r.code == 0:
-            return ReturnResponse(
+            return OldReturnResponse(
                 code=0, 
                 msg=f"{sysname} {ifname} 最近 {last_n_minutes} 分钟 {direction} 方向流量速率为 {int(r.data[0]['value'][1])} Mbit/s", 
                 data={
@@ -333,7 +396,7 @@ class VictoriaMetrics:
                 }
             )
         else:
-            return ReturnResponse(
+            return OldReturnResponse(
                 code=1, 
                 msg=f"查询 {sysname} {ifname} 最近 {last_n_minutes} 分钟 {direction} 方向流量速率失败, 错误信息: {r.msg}", 
                 data={
@@ -348,7 +411,7 @@ class VictoriaMetrics:
                                  ifname:str, 
                                  last_hours: Optional[int] = 24,
                                  last_minutes: Optional[int] = 5,
-                                ) -> ReturnResponse:
+                                ) -> OldReturnResponse:
         '''
         _summary_
 
@@ -360,7 +423,7 @@ class VictoriaMetrics:
             last_minutes (Optional[int], optional): _description_. Defaults to 5.
 
         Returns:
-            ReturnResponse: _description_
+            OldReturnResponse: _description_
         '''
         if direction == 'in':
             query = f'avg_over_time((rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8) [{last_hours}h:]) / 1e6'
@@ -369,9 +432,9 @@ class VictoriaMetrics:
         r = self.query(query)
         try:
             rate = r.data[0]['value'][1]
-            return ReturnResponse(code=0, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时平均速率为 {round(float(rate), 2)} Mbit/s", data=round(float(rate), 2))
+            return OldReturnResponse(code=0, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时平均速率为 {round(float(rate), 2)} Mbit/s", data=round(float(rate), 2))
         except KeyError:
-            return ReturnResponse(code=1, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时平均速率为 0 Mbit/s")
+            return OldReturnResponse(code=1, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时平均速率为 0 Mbit/s")
 
     def check_interface_max_rate(self,
                                  direction: Literal['in', 'out'],
@@ -379,7 +442,7 @@ class VictoriaMetrics:
                                  ifname:str, 
                                  last_hours: Optional[int] = 24,
                                  last_minutes: Optional[int] = 5,
-                                ) -> ReturnResponse:
+                                ) -> OldReturnResponse:
         '''
         _summary_
 
@@ -391,7 +454,7 @@ class VictoriaMetrics:
             last_minutes (Optional[int], optional): _description_. Defaults to 5.
 
         Returns:
-            ReturnResponse: _description_
+            OldReturnResponse: _description_
         '''
         if direction == 'in':
             query = f'max_over_time((rate(snmp_interface_ifHCInOctets{{sysName="{sysname}", ifName="{ifname}"}}[{last_minutes}m]) * 8) [{last_hours}h:]) / 1e6'
@@ -400,11 +463,11 @@ class VictoriaMetrics:
         r = self.query(query)
         try:
             rate = r.data[0]['value'][1]
-            return ReturnResponse(code=0, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时最大速率为 {round(float(rate), 2)} Mbit/s", data=round(float(rate), 2))
+            return OldReturnResponse(code=0, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时最大速率为 {round(float(rate), 2)} Mbit/s", data=round(float(rate), 2))
         except KeyError:
-            return ReturnResponse(code=1, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时最大速率为 0 Mbit/s")
+            return OldReturnResponse(code=1, msg=f"查询 {sysname} {ifname} 最近 {last_hours} 小时最大速率为 0 Mbit/s")
 
-    def check_snmp_port_status(self, sysname: str=None, if_name: str=None, last_minute: int=5, dev_file: str=None) -> ReturnResponse:
+    def check_snmp_port_status(self, sysname: str=None, if_name: str=None, last_minute: int=5, dev_file: str=None) -> OldReturnResponse:
         '''
         查询端口状态
         status code 可参考 SNMP 文件 https://mibbrowser.online/mibdb_search.php?mib=IF-MIB
@@ -415,7 +478,7 @@ class VictoriaMetrics:
             last_minute (_type_): _description_
 
         Returns:
-            ReturnResponse: 
+            OldReturnResponse: 
             code: 0, msg: , data: up,down
         '''
         q = f"""avg_over_time(snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{if_name}"}}[{last_minute}m])"""
@@ -429,7 +492,7 @@ class VictoriaMetrics:
                 status = 'up'
             else:
                 status = 'down'
-            return ReturnResponse(code=0, msg=f"{sysname} {if_name} 最近 {last_minute} 分钟端口状态为 {status}", data=status)
+            return OldReturnResponse(code=0, msg=f"{sysname} {if_name} 最近 {last_minute} 分钟端口状态为 {status}", data=status)
         else:
             return r
 
@@ -440,7 +503,7 @@ class VictoriaMetrics:
                                   comment: str=None, 
                                   schedule_interval: str=None, 
                                   schedule_cron: str=None
-                                ) -> ReturnResponse:
+                                ) -> OldReturnResponse:
         labels = {
             "app": app,
             "env": self.env,
@@ -468,7 +531,7 @@ class VictoriaMetrics:
                                         comment: str=None, 
                                         schedule_interval: str=None, 
                                         schedule_cron: str=None
-                                    ) -> ReturnResponse:
+                                    ) -> OldReturnResponse:
         labels = {
             "app": app,
             "env": self.env
@@ -524,7 +587,7 @@ class VictoriaMetrics:
                                        sysname_repr: str=None,
                                        ifname_list: list=[], 
                                        dev_file: str=None
-                                    ) -> ReturnResponse:
+                                    ) -> OldReturnResponse:
         if dev_file is not None:
             r = load_dev_file(dev_file)
         else:
@@ -543,7 +606,7 @@ class VictoriaMetrics:
                                     session_up_gt: int=None, 
                                     last_minute: int=10, 
                                     dev_file: str=None
-                                ) -> ReturnResponse:
+                                ) -> OldReturnResponse:
         '''
         获取 viptela BFD 会话数
 
@@ -555,7 +618,7 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to None.
 
         Returns:
-            ReturnResponse:
+            OldReturnResponse:
                 code: 0, msg: 状态描述, data:
                     query: 查询语句
                     data: 查询结果列表
@@ -577,7 +640,7 @@ class VictoriaMetrics:
                         "value": int(result['value'][1])
                     }
                 )
-            return ReturnResponse(code=r.code, msg=f"获取到 {len(data)} 条数据", data=data)
+            return OldReturnResponse(code=r.code, msg=f"获取到 {len(data)} 条数据", data=data)
         else:
             if sysname is None:
                 if session_up_lt is not None:
@@ -585,7 +648,7 @@ class VictoriaMetrics:
                 elif session_up_gt is not None:
                     query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp[{last_minute}m]) > {session_up_gt}'
                 else:
-                    return ReturnResponse(code=1, msg="sysname 和 session_up_lt 或 session_up_gt 不能同时为空")
+                    return OldReturnResponse(code=1, msg="sysname 和 session_up_lt 或 session_up_gt 不能同时为空")
             else:
                 query = f'max_over_time(vedge_snmp_bfdSummaryBfdSessionsUp{{sysName="{sysname}"}}[{last_minute}m]) > {session_up_gt}'
                 
@@ -594,7 +657,7 @@ class VictoriaMetrics:
 
             data = []
             if isinstance(results, dict) and not results['data'].get('result'):
-                return ReturnResponse(code=1, msg=f"满足条件的有0条数据", data=data)
+                return OldReturnResponse(code=1, msg=f"满足条件的有0条数据", data=data)
             for result in results:
                 data.append(
                     {
@@ -603,9 +666,9 @@ class VictoriaMetrics:
                         "value": int(result['value'][1])
                     }
                 )
-            return ReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
+            return OldReturnResponse(code=r.code, msg=f"满足条件的有 {len(data)} 条", data=data)
 
-    def get_viptela_bfd_session_list_state(self, sysname: str=None, last_minute: int=30, dev_file: str=None) -> ReturnResponse:
+    def get_viptela_bfd_session_list_state(self, sysname: str=None, last_minute: int=30, dev_file: str=None) -> OldReturnResponse:
         '''
         获取 viptela BFD 会话列表状态
 
@@ -615,7 +678,7 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to None.
 
         Returns:
-            ReturnResponse: 
+            OldReturnResponse: 
         '''
         if dev_file is not None:
             query = None
@@ -635,13 +698,13 @@ class VictoriaMetrics:
             data = []
             for result in results:
                 data.append(result['metric'] | {'value': result['value'][1]})
-            return ReturnResponse(code=0, msg=f"获取到 {len(data)} 条数据", data={'query': query, 'data': data})
+            return OldReturnResponse(code=0, msg=f"获取到 {len(data)} 条数据", data={'query': query, 'data': data})
     
     def get_apc_input_status(self, 
                              sysname: str=None,
                              last_minutes: int=5,
                              threshold: int=3,
-                             dev_file: str=None) -> ReturnResponse:
+                             dev_file: str=None) -> OldReturnResponse:
         '''
         获取 UPS 输入状态
 
@@ -652,7 +715,7 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to None.
 
         Returns:
-            ReturnResponse: 
+            OldReturnResponse: 
                 code: 0, msg: 获取到多少条数据, data: 数据列表
                 code: 1, msg: 错误信息, data: None
         '''
@@ -663,19 +726,25 @@ class VictoriaMetrics:
                 f"[{last_minutes}m:1m]) >= {threshold}"
             )
         else:
-            # 单设备查询：近 threshold 分钟内没有低电压点才算恢复
+            # 单设备查询：近 last_minutes 分钟内全部 > 1 才算恢复
             query = (
                 "count_over_time((snmp_upsInput_upsAdvInputLineVoltage"
-                f'{{sysName="{sysname}"}} <= 1)[{threshold}m:1m]) == 0'
+                f'{{sysName="{sysname}"}} <= 1)[3m:1m]) == 0'
             )
         if dev_file is not None:
             r = load_dev_file(dev_file)
         else:
             r = self.query(query=query)
-        
-        if r.code == 0:
+        print(r)
+        if r.code in (0, 2):
             data = r.data or []
-            if sysname is None:
+            print(data)
+
+            if sysname is None and not data['data']['result']:
+                status = "normal"
+                status_msg = "not found ups fault device"
+                mode = "fault_check"
+            elif sysname is None:
                 status = "fault" if len(data) > 0 else "normal"
                 status_msg = "存在中断设备" if len(data) > 0 else "未发现中断设备"
                 mode = "fault_check"
@@ -683,8 +752,8 @@ class VictoriaMetrics:
                 status = "normal" if len(data) > 0 else "fault"
                 status_msg = "市电已恢复" if len(data) > 0 else "市电仍中断"
                 mode = "recovery_check"
-            return ReturnResponse(
-                code=r.code,
+            return OldReturnResponse(
+                code=0,
                 msg=status_msg,
                 data={
                     'query': query,
@@ -696,14 +765,13 @@ class VictoriaMetrics:
                 },
             )
         else:
-            return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
-
+            return OldReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
 
     def get_apc_battery_replace_status(self, 
                              sysname: str=None,
                              last_minutes: int=5,
                              threshold: int=3,
-                             dev_file: str=None) -> ReturnResponse:
+                             dev_file: str=None) -> OldReturnResponse:
         '''
         获取 UPS 电池更换状态
 
@@ -714,7 +782,7 @@ class VictoriaMetrics:
             dev_file (str, optional): 开发文件. Defaults to None.
 
         Returns:
-            ReturnResponse:
+            OldReturnResponse:
                 code: 0, msg: 状态描述, data:
                     query: 查询语句
                     data: 查询结果列表
@@ -752,7 +820,7 @@ class VictoriaMetrics:
                 status = "normal" if len(data) > 0 else "fault"
                 status_msg = "电池更换告警已恢复" if len(data) > 0 else "电池更换告警仍存在"
                 mode = "recovery_check"
-            return ReturnResponse(
+            return OldReturnResponse(
                 code=r.code,
                 msg=status_msg,
                 data={
@@ -765,9 +833,9 @@ class VictoriaMetrics:
                 },
             )
         else:
-            return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
+            return OldReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
     
-    def get_system_uptime(self, sysname: str=None, uptime_lt_minute: int=None, dev_file: str=None) -> ReturnResponse:
+    def get_system_uptime(self, sysname: str=None, uptime_lt_minute: int=None, dev_file: str=None) -> OldReturnResponse:
         if sysname is None and uptime_lt_minute is not None:
             query = f'snmp_sysUpTime < {uptime_lt_minute * 60}'
         else:
@@ -779,6 +847,6 @@ class VictoriaMetrics:
             r = self.query(query=query)
         
         if r.code == 0:
-            return ReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data, 'uptime_minute': int(float(r.data[0]['value'][1]) / 60)})
+            return OldReturnResponse(code=r.code, msg=f"获取到 {len(r.data)} 条数据", data={'query': query, 'data': r.data, 'uptime_minute': int(float(r.data[0]['value'][1]) / 60)})
         else:
-            return ReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
+            return OldReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
