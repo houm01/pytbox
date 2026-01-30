@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import re
 import time
 import json
 from typing import Literal, Optional, Dict, List, Any, Union
@@ -592,7 +592,8 @@ class VictoriaMetrics:
             r = load_dev_file(dev_file)
         else:
             if ifname_list and sysname_repr:
-                query = f'snmp_interface_ifOperStatus{{sysName=~"{sysname_repr}", ifName=~"^({'|'.join(ifname_list)})$"}}'
+                ifname_pattern = '|'.join([re.escape(name) for name in ifname_list])
+                query = f'snmp_interface_ifOperStatus{{sysName=~"{sysname_repr}", ifName=~"^({ifname_pattern})$"}}'
             else:
                 query = f'snmp_interface_ifOperStatus{{sysName="{sysname}", ifName="{ifname}"}}'
             print(query)
