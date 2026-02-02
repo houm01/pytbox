@@ -142,6 +142,15 @@ class Meraki:
 
     def get_api_requests(self, timespan: int=5*60) -> ReturnResponse:
         
+        """
+        获取api requests。
+
+        Args:
+            timespan: timespan 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         params = {}
         params['timespan'] = timespan
         
@@ -516,6 +525,12 @@ class Meraki:
     
     def get_alerts(self):
         # from datetime import datetime, timedelta
+        """
+        获取alerts。
+
+        Returns:
+            Any: 返回值。
+        """
         params = {}
         params['tsStart'] = "2025-10-20T00:00:00Z"
         params['tsEnd'] = "2025-10-30T00:00:00Z"
@@ -535,6 +550,15 @@ class Meraki:
         # return ReturnResponse(code=0, msg="获取告警成功", data=r.json())
     
     def timestamp_to_iso8601(self, timestamp: int) -> str:
+        """
+        执行 timestamp to iso8601 相关逻辑。
+
+        Args:
+            timestamp: timestamp 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
     def get_network_events(self, 
@@ -885,6 +909,15 @@ class Meraki:
     #     )
 
     def get_switch_profiles(self, config_template_id: str=None) -> ReturnResponse:
+        """
+        获取switch profiles。
+
+        Args:
+            config_template_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         response = requests.get(
             url=f"{self.base_url}/organizations/{self.organization_id}/configTemplates/{config_template_id}/switch/profiles",
             headers=self.headers,
@@ -906,6 +939,22 @@ class Meraki:
                       switch_profile_id: str=None
                 ) -> ReturnResponse:
 
+        """
+        更新device。
+
+        Args:
+            config_template_id: 资源 ID。
+            serial: serial 参数。
+            name: name 参数。
+            tags: tags 参数。
+            address: address 参数。
+            lat: lat 参数。
+            lng: lng 参数。
+            switch_profile_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         body = {
             "name": name,
             "tags": tags,
@@ -1072,6 +1121,16 @@ class Meraki:
         return False
         
     def create_ssid(self, network_id, ssid_name) -> ReturnResponse:
+        """
+        创建ssid。
+
+        Args:
+            network_id: 资源 ID。
+            ssid_name: ssid_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.is_ssid_exists(network_id=network_id, ssid_name=ssid_name):
             return ReturnResponse(code=0, msg=f"SSID {ssid_name} 已存在", data=None)
         

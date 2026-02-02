@@ -8,18 +8,40 @@ from pytbox.cloud.volc.errors import map_volc_exception
 
 @dataclass(frozen=True)
 class VolcCreds:
+    """
+    VolcCreds 类。
+
+    用于 Volc Creds 相关能力的封装。
+    """
     ak: str
     sk: str
 
 
 @dataclass(frozen=True)
 class VolcConfig:
+    """
+    VolcConfig 类。
+
+    用于 Volc Config 相关能力的封装。
+    """
     region: str
     timeout_s: float = 8.0
 
 
 class VolcClient:
+    """
+    VolcClient 类。
+
+    用于 Volc Client 相关能力的封装。
+    """
     def __init__(self, *, creds: VolcCreds, cfg: VolcConfig):
+        """
+        初始化对象。
+
+        Args:
+            creds: creds 参数。
+            cfg: cfg 参数。
+        """
         self.creds = creds
         self.cfg = cfg
 
@@ -36,17 +58,44 @@ class VolcClient:
 
     @property
     def api_client(self):
+        """
+        执行 api client 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         return self._api_client
 
     def set_region(self, region: str) -> None:
+        """
+        设置region。
+
+        Args:
+            region: region 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         self._api_client.configuration.region = region
 
     def ecs_api(self):
+        """
+        执行 ecs api 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         if self._ecs_api is None:
             self._ecs_api = volcenginesdkecs.ECSApi(self._api_client)
         return self._ecs_api
 
     def volc_observe_api(self):
+        """
+        执行 volc observe api 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         if self._volcobserve_api is None:
             # volcobserve 的 api 类名通常是 VOLCOBSERVEApi（按你安装版本可能不同）
             # 这里做一层兼容
@@ -62,6 +111,16 @@ class VolcClient:
         return self._volcobserve_api
 
     def call(self, action: str, fn):
+        """
+        调用。
+
+        Args:
+            action: action 参数。
+            fn: fn 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         try:
             return fn()
         except Exception as e:  # noqa: BLE001

@@ -25,6 +25,11 @@ from .typing import SyncAsync
 
 @dataclass
 class ClientOptions:
+    """
+    ClientOptions 类。
+
+    用于 Client Options 相关能力的封装。
+    """
     auth: Optional[str] = None
     timeout_ms: int = 60_000
     base_url: str = "https://open.feishu.cn/open-apis"
@@ -32,6 +37,11 @@ class ClientOptions:
 
 @dataclass
 class FeishuResponse:
+    """
+    FeishuResponse 类。
+
+    用于 Feishu Response 相关能力的封装。
+    """
     code: int
     data: dict
     chat_id: str
@@ -45,12 +55,25 @@ class FeishuResponse:
 
 class BaseClient:
 
+    """
+    BaseClient 类。
+
+    用于 Base Client 相关能力的封装。
+    """
     def __init__(self,
                  app_id: str,
                  app_secret: str,
                  client: Union[httpx.Client, httpx.AsyncClient],
             ) -> None:
         
+        """
+        初始化对象。
+
+        Args:
+            app_id: 资源 ID。
+            app_secret: app_secret 参数。
+            client: client 参数。
+        """
         self.app_id = app_id
         self.app_secret = app_secret
 
@@ -68,10 +91,25 @@ class BaseClient:
         
     @property
     def client(self) -> Union[httpx.Client, httpx.AsyncClient]:
+        """
+        执行 client 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         return self._clients[-1]
     
     @client.setter
     def client(self, client: Union[httpx.Client, httpx.AsyncClient]) -> None:
+        """
+        执行 client 相关逻辑。
+
+        Args:
+            client: client 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         client.base_url = httpx.URL(f'{self.options.base_url}/')
         client.timeout = httpx.Timeout(timeout=self.options.timeout_ms / 1_000)
         client.headers = httpx.Headers(
@@ -91,6 +129,21 @@ class BaseClient:
                        files: Optional[Dict[str, Any]] = None,
                        token: Optional[str] = None) -> Request:
         
+        """
+        执行 build request 相关逻辑。
+
+        Args:
+            method: method 参数。
+            path: path 参数。
+            query: query 参数。
+            body: body 参数。
+            data: data 参数。
+            files: files 参数。
+            token: token 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         headers = httpx.Headers()
         headers['Authorization'] = f'Bearer {token}'
         if 'image' in path:
@@ -101,6 +154,15 @@ class BaseClient:
         )
 
     def _parse_response(self, response) -> Any:
+        """
+        执行 parse response 相关逻辑。
+
+        Args:
+            response: response 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         response = response.json()
         return FeishuResponse(code=response.get('code'),
                               data=response.get('data'),
@@ -121,11 +183,30 @@ class BaseClient:
                 auth: Optional[str] = None,
                 data: Optional[Any] = None,
                 ) -> SyncAsync[Any]:
+        """
+        发起请求。
+
+        Args:
+            path: path 参数。
+            method: method 参数。
+            query: query 参数。
+            body: body 参数。
+            auth: auth 参数。
+            data: data 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         pass
 
 
 class Client(BaseClient):
 
+    """
+    Client 类。
+
+    用于 Client 相关能力的封装。
+    """
     client: httpx.Client
 
     def __init__(self,
@@ -133,11 +214,25 @@ class Client(BaseClient):
                  app_secret: str,
                  client: Optional[httpx.Client]=None) -> None:
         
+        """
+        初始化对象。
+
+        Args:
+            app_id: 资源 ID。
+            app_secret: app_secret 参数。
+            client: client 参数。
+        """
         if client is None:
             client = httpx.Client()
         super().__init__(app_id, app_secret, client)
     
     def __enter__(self) -> "Client":
+        """
+        进入上下文管理器。
+
+        Returns:
+            Any: 返回值。
+        """
         self.client = httpx.Client()
         self.client.__enter__()
         return self
@@ -146,13 +241,36 @@ class Client(BaseClient):
                  exc_type: Type[BaseException],
                  exc_value: BaseException,
                  traceback: TracebackType) -> None:
+        """
+        退出上下文管理器并做资源清理。
+
+        Args:
+            exc_type: exc_type 参数。
+            exc_value: exc_value 参数。
+            traceback: traceback 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         self.client.__exit__(exc_type, exc_value, traceback)
         del self._clients[-1]
     
     def close(self) -> None:
+        """
+        关闭。
+
+        Returns:
+            Any: 返回值。
+        """
         self.client.close()
 
     def _get_token(self):
+        """
+        执行 get token 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.auth.fetch_token_from_file():
             return self.auth.fetch_token_from_file()
         else:
@@ -169,6 +287,21 @@ class Client(BaseClient):
                 data: Optional[Any] = None,
                 ) -> Any:
 
+        """
+        发起请求。
+
+        Args:
+            path: path 参数。
+            method: method 参数。
+            query: query 参数。
+            body: body 参数。
+            files: files 参数。
+            token: token 参数。
+            data: data 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         request = self._build_request(method, path, query, body, files=files, data=data, token=self._get_token())
         try:
             response = self._parse_response(self.client.send(request))

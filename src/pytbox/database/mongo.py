@@ -10,6 +10,18 @@ class Mongo:
     当前主要使用的类
     '''
     def __init__(self, host: str=None, port: int=27017, username: str=None, password: str=None, auto_source: str=None, db_name: str='automate', collection: str=None):
+        """
+        初始化对象。
+
+        Args:
+            host: host 参数。
+            port: port 参数。
+            username: username 参数。
+            password: password 参数。
+            auto_source: auto_source 参数。
+            db_name: db_name 参数。
+            collection: collection 参数。
+        """
         self.client = self._create_client(host, port, username, password, auto_source)
         self.collection = self.client[db_name][collection]
     
@@ -49,6 +61,15 @@ class Mongo:
             return True
 
     def query_alert_not_resolved(self, event_name: str=None):
+        """
+        查询alert not resolved。
+
+        Args:
+            event_name: event_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         query = {
             "$or": [
                 {"resolved_time": { "$exists": False }}

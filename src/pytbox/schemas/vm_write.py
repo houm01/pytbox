@@ -5,6 +5,11 @@ import math
 Number = Union[int, float]
 
 class VMWriteItem(BaseModel):
+    """
+    VMWriteItem 类。
+
+    用于 VM Write Item 相关能力的封装。
+    """
     labels: Dict[str, Any] = Field(default_factory=dict)
     value: Optional[Number] = None
     timestamp: Optional[int] = None  # ms
@@ -12,6 +17,15 @@ class VMWriteItem(BaseModel):
     @field_validator("timestamp")
     @classmethod
     def _ts_ms_valid(cls, v):
+        """
+        执行 ts ms valid 相关逻辑。
+
+        Args:
+            v: v 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if v is None:
             return v
         if v < 0:
@@ -21,6 +35,15 @@ class VMWriteItem(BaseModel):
     @field_validator("value")
     @classmethod
     def _value_valid(cls, v):
+        """
+        执行 value valid 相关逻辑。
+
+        Args:
+            v: v 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if v is None:
             return v
         # 防 NaN/inf

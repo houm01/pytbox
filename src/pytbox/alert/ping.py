@@ -5,6 +5,16 @@ from ..lib.load_config import load_config
 
 
 def ping(config, target):
+    """
+    探测。
+
+    Args:
+        config: config 参数。
+        target: target 参数。
+
+    Returns:
+        Any: 返回值。
+    """
     vm = VictoriaMetrics(url=config['victoriametrics']['url'])
     ping_status = vm.query_ping_status(target=target, last_minutes=config['alert']['ping']['last_minutes'])
     if ping_status == '不通':

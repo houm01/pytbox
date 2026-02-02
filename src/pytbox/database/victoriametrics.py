@@ -16,7 +16,20 @@ from ..schemas.vm_query import VMInstantQueryResponse, VMInstantSeries
 
 class VictoriaMetrics:
     
+    """
+    VictoriaMetrics 类。
+
+    用于 Victoria Metrics 相关能力的封装。
+    """
     def __init__(self, url: str='', timeout: int=3, env: str='prod') -> None:
+        """
+        初始化对象。
+
+        Args:
+            url: url 参数。
+            timeout: timeout 参数。
+            env: env 参数。
+        """
         self.url = url
         self.timeout = timeout
         self.session = requests.Session()
@@ -91,6 +104,15 @@ class VictoriaMetrics:
         base_ts = int(time.time() * 1000)
 
         def _normalize_labels(raw: Dict[str, Any]) -> Dict[str, str]:
+            """
+            执行 normalize labels 相关逻辑。
+
+            Args:
+                raw: raw 参数。
+
+            Returns:
+                Any: 返回值。
+            """
             if raw is None:
                 return {}
             out: Dict[str, str] = {}
@@ -193,6 +215,15 @@ class VictoriaMetrics:
         self, 
         query: Optional[str] = None
     ) -> ReturnResponse:
+        """
+        查询instant。
+
+        Args:
+            query: query 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f'{self.url}/prometheus/api/v1/query'
         try:
             r = requests.get(url, timeout=self.timeout, params={'query': query})
@@ -293,6 +324,15 @@ class VictoriaMetrics:
         # else:
         #     return resp
     def get_labels(self, metric_name: str) -> OldReturnResponse:
+        """
+        获取labels。
+
+        Args:
+            metric_name: metric_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.url}/api/v1/series?match[]={metric_name}"
         response = requests.get(url, timeout=self.timeout)
         results = response.json()
@@ -504,6 +544,20 @@ class VictoriaMetrics:
                                   schedule_interval: str=None, 
                                   schedule_cron: str=None
                                 ) -> OldReturnResponse:
+        """
+        写入cronjob run status。
+
+        Args:
+            app_type: app_type 参数。
+            app: app 参数。
+            status_code: status_code 参数。
+            comment: comment 参数。
+            schedule_interval: schedule_interval 参数。
+            schedule_cron: schedule_cron 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         labels = {
             "app": app,
             "env": self.env,
@@ -532,6 +586,20 @@ class VictoriaMetrics:
                                         schedule_interval: str=None, 
                                         schedule_cron: str=None
                                     ) -> OldReturnResponse:
+        """
+        写入cronjob duration seconds。
+
+        Args:
+            app_type: app_type 参数。
+            app: app 参数。
+            duration_seconds: duration_seconds 参数。
+            comment: comment 参数。
+            schedule_interval: schedule_interval 参数。
+            schedule_cron: schedule_cron 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         labels = {
             "app": app,
             "env": self.env
@@ -578,6 +646,15 @@ class VictoriaMetrics:
         return self.query(query=query).data[0]['value'][1]
 
     def get_snmp_interfaces(self, sysname):
+        """
+        获取snmp interfaces。
+
+        Args:
+            sysname: sysname 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         r = self.query(query=f'snmp_interface_ifOperStatus{{sysName="{sysname}"}}')
         return r
     
@@ -588,6 +665,19 @@ class VictoriaMetrics:
                                        ifname_list: list=[], 
                                        dev_file: str=None
                                     ) -> OldReturnResponse:
+        """
+        获取snmp interface oper status。
+
+        Args:
+            sysname: sysname 参数。
+            ifname: ifname 参数。
+            sysname_repr: sysname_repr 参数。
+            ifname_list: ifname_list 参数。
+            dev_file: dev_file 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if dev_file is not None:
             r = load_dev_file(dev_file)
         else:
@@ -837,6 +927,17 @@ class VictoriaMetrics:
             return OldReturnResponse(code=r.code, msg=r.msg, data={'query': query, 'data': None})
     
     def get_system_uptime(self, sysname: str=None, uptime_lt_minute: int=None, dev_file: str=None) -> OldReturnResponse:
+        """
+        获取system uptime。
+
+        Args:
+            sysname: sysname 参数。
+            uptime_lt_minute: uptime_lt_minute 参数。
+            dev_file: dev_file 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if sysname is None and uptime_lt_minute is not None:
             query = f'snmp_sysUpTime < {uptime_lt_minute * 60}'
         else:

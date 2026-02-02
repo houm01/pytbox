@@ -15,6 +15,11 @@ from .utils.response import ReturnResponse
 
 @dataclass
 class Task:
+    """
+    Task 类。
+
+    用于 Task 相关能力的封装。
+    """
     task_id: str
     project_id: str
     title: str
@@ -30,8 +35,22 @@ class Task:
 
 
 class ProcessReturnResponse:    
+    """
+    ProcessReturnResponse 类。
+
+    用于 Process Return Response 相关能力的封装。
+    """
     @staticmethod
     def status(status):
+        """
+        执行 status 相关逻辑。
+
+        Args:
+            status: status 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if status == 0:
             return '进行中'
         elif status == 2:
@@ -41,6 +60,15 @@ class ProcessReturnResponse:
 
     @staticmethod
     def priority(priority):
+        """
+        执行 priority 相关逻辑。
+
+        Args:
+            priority: priority 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if priority == 1:
             return '低优先级'
         elif priority == 3:
@@ -234,9 +262,29 @@ class Dida365:
         return self.request(api_url=f"/open/v1/project/{project_id}/task/{task_id}/complete", method="POST")
 
     def task_get(self, project_id, task_id):
+        """
+        执行 task get 相关逻辑。
+
+        Args:
+            project_id: 资源 ID。
+            task_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         return self.request(api_url = f'/open/v1/project/{project_id}/task/{task_id}')
 
     def task_comments(self, project_id: str, task_id: str):
+        """
+        执行 task comments 相关逻辑。
+
+        Args:
+            project_id: 资源 ID。
+            task_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         return requests.request(
             method='GET',
             url=f'https://api.dida365.com/api/v2/project/{project_id}/task/{task_id}/comments',
@@ -276,6 +324,12 @@ class Dida365:
         return self.request(api_url=f"/open/v1/task/{task_id}", method="POST", payload=payload)
 
     def get_projects(self) -> ReturnResponse:
+        """
+        获取projects。
+
+        Returns:
+            Any: 返回值。
+        """
         response = requests.request(
             method='GET',
             url=f'{self.base_url}/open/v1/project',

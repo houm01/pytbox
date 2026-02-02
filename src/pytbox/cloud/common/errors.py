@@ -34,5 +34,12 @@ class UpstreamError(PytboxError):
     """Upstream API error (5xx/unknown)."""
 
     def __init__(self, message: str, *, upstream_code: str | None = None):
+        """
+        初始化对象。
+
+        Args:
+            message: message 参数。
+            upstream_code: upstream_code 参数。
+        """
         super().__init__(message)
         self.upstream_code = upstream_code

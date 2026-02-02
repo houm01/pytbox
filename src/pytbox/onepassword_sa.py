@@ -63,6 +63,20 @@ class OnePasswordClient:
     
     async def create_item(self, url, name, username, password, notes, tags: list=[]):
         # Create an Item and add it to your vault.
+        """
+        创建item。
+
+        Args:
+            url: url 参数。
+            name: name 参数。
+            username: username 参数。
+            password: password 参数。
+            notes: notes 参数。
+            tags: tags 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         await self.ensure_authenticated()
         to_create = ItemCreateParams(
             title=name,
@@ -102,6 +116,15 @@ class OnePasswordClient:
     
     async def get_item(self, item_id):
         # Retrieve an item from your vault.
+        """
+        获取item。
+
+        Args:
+            item_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         item = await self.client.items.get(self.vault_id, item_id)
         return item
     

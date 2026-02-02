@@ -5,7 +5,18 @@ from ...utils.response import ReturnResponse
 
 
 class ECSResource:
+    """
+    ECSResource 类。
+
+    用于 ECS Resource 相关能力的封装。
+    """
     def __init__(self, client):
+        """
+        初始化对象。
+
+        Args:
+            client: client 参数。
+        """
         self._c = client
         self._api = self._c.ecs_api()
 

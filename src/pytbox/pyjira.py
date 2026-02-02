@@ -407,12 +407,27 @@ class PyJira:
         return ReturnResponse(code=0, msg='', data=response.json())
  
     def get_issue_fields(self) -> ReturnResponse:
+        """
+        获取issue fields。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.base_url}/rest/api/3/field"
         response = self.session.get(url, headers=self.headers, timeout=self.timeout)
         response.raise_for_status()
         return ReturnResponse(code=0, msg='', data=response.json())
  
     def get_project(self, project_id_or_key: Literal['TEST']='TEST') -> ReturnResponse:
+        """
+        获取project。
+
+        Args:
+            project_id_or_key: project_id_or_key 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.deploy_type == 'cloud':
             url = f"{self.base_url}/rest/api/3/project/{project_id_or_key}"
         else:
@@ -433,6 +448,15 @@ class PyJira:
     #         return ReturnResponse(code=1, msg=response.text)
  
     def get_metadata_for_project_issue_types(self, project_id_or_key: Literal['TEST', 'MO', '10000']='TEST'):
+        """
+        获取metadata for project issue types。
+
+        Args:
+            project_id_or_key: project_id_or_key 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.base_url}/rest/api/2/issue/createmeta/{project_id_or_key}/issuetypes"
         response = self.session.get(url, headers=self.headers, timeout=self.timeout)
         if response.status_code == 200:
@@ -441,16 +465,45 @@ class PyJira:
             return ReturnResponse(code=1, msg=f"{response.status_code}: {response.text}")
  
     def get_metadata_for_issue_type_used_for_create_issue(self, project_id_or_key: Literal['TEST', 'MO']='TEST', issue_type_id: Literal['10000']='10000'):
+        """
+        获取metadata for issue type used for create issue。
+
+        Args:
+            project_id_or_key: project_id_or_key 参数。
+            issue_type_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.base_url}/rest/api/{self.rest_version}/issue/createmeta/{project_id_or_key}/issuetypes/{issue_type_id}"
         r = self.session.get(url, headers=self.headers, timeout=self.timeout)
         return r
     
     def get_user(self, username: str=None, key: str=None):
+        """
+        获取user。
+
+        Args:
+            username: username 参数。
+            key: key 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.base_url}/rest/api/{self.rest_version}/user"
         r = self.session.get(url, headers=self.headers, params={'username': username}, timeout=self.timeout)
         return r
     
     def get_issue_property(self, issue_id_or_key):
+        """
+        获取issue property。
+
+        Args:
+            issue_id_or_key: issue_id_or_key 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.base_url}/rest/api/2/issue/{issue_id_or_key}/properties"
         r = self.session.get(url, headers=self.headers, timeout=self.timeout)
         return r
@@ -473,6 +526,15 @@ class PyJira:
             return ReturnResponse(code=1, msg=f'获取用户失败, status code: {r.status_code}, 报错: {r.text}')
     
     def get_issue_transitions(self, issue_id_or_key) -> ReturnResponse:
+        """
+        获取issue transitions。
+
+        Args:
+            issue_id_or_key: issue_id_or_key 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.base_url}/rest/api/{self.rest_version}/issue/{issue_id_or_key}/transitions"
         r = self.session.get(url, headers=self.headers, timeout=self.timeout)
         if r.status_code == 200:
@@ -481,6 +543,16 @@ class PyJira:
             return ReturnResponse(code=1, msg=f'获取 issue [{issue_id_or_key}] 的 transitions 失败, status code: {r.status_code}, 报错: {r.text}')
   
     def get_issue_transitions_by_name(self, issue_id_or_key, name) -> ReturnResponse:
+        """
+        获取issue transitions by name。
+
+        Args:
+            issue_id_or_key: issue_id_or_key 参数。
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         r = self.get_issue_transitions(issue_id_or_key=issue_id_or_key)
         for transition in r.data['transitions']:
             if transition['name'] == name:
@@ -488,6 +560,16 @@ class PyJira:
         raise ValueError(f'获取 issue [{issue_id_or_key}] 的 transitions 失败, 没有找到状态为 {name} 的 transition')
 
     def issue_transition(self, issue_id_or_key, transition_name) -> ReturnResponse:
+        """
+        执行 issue transition 相关逻辑。
+
+        Args:
+            issue_id_or_key: issue_id_or_key 参数。
+            transition_name: transition_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         update = False
         status = self.issue_get_by_key(issue_id_or_key=issue_id_or_key, get_key='status')
         if status:

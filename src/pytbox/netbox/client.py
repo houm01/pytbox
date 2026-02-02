@@ -14,7 +14,20 @@ from ..utils.parse import Parse
 
 
 class NetboxClient:
+    """
+    NetboxClient 类。
+
+    用于 Netbox Client 相关能力的封装。
+    """
     def __init__(self, url: str=None, token: str=None, timeout: int=10):
+        """
+        初始化对象。
+
+        Args:
+            url: url 参数。
+            token: token 参数。
+            timeout: timeout 参数。
+        """
         self.url = url
         self.token = token
         self.headers = {
@@ -25,14 +38,38 @@ class NetboxClient:
         self.pynetbox = pynetbox.api(self.url, token=self.token)
 
     def get_update_comments(self, source: str=''):
+        """
+        获取update comments。
+
+        Args:
+            source: source 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return f"""Updated by automation script\nDate: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}\nSource: {source}"""
 
     def get_org_sites_regions(self) -> Dict[str, Any]:
+        """
+        获取org sites regions。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/dcim/regions/"
         r = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         return r.json()
 
     def get_region_id(self, name):
+        """
+        获取region id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/dcim/regions/"
         params = {
             "name": name
@@ -79,6 +116,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
 
     def get_dcim_site_id(self, name):
+        """
+        获取dcim site id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/dcim/sites"
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         for site in response.json()['results']:
@@ -141,6 +187,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
     
     def get_dcim_location_id(self, name):
+        """
+        获取dcim location id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/dcim/locations"
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         for location in response.json()['results']:
@@ -149,6 +204,19 @@ class NetboxClient:
         return None
     
     def add_or_update_dcim_location(self, name, slug=None, site_name=None, status: Literal['planned', 'staging', 'active', 'decommissioning', 'retired']='active', parent_name=None):
+        """
+        新增or update dcim location。
+
+        Args:
+            name: name 参数。
+            slug: slug 参数。
+            site_name: site_name 参数。
+            status: status 参数。
+            parent_name: parent_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if slug is None:
             slug = Common.get_pinyin_initials(name)
             self.log.info(f"用户未输入 slug, 已转换为 {slug}")
@@ -176,6 +244,15 @@ class NetboxClient:
             return ReturnResponse(code=0, message=f"{name} 创建成功!", data=create_response.json())
 
     def get_ipam_ipaddress_id(self, address):
+        """
+        获取ipam ipaddress id。
+
+        Args:
+            address: address 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/ipam/ip-addresses/"
         params = {
             "address": address
@@ -191,6 +268,15 @@ class NetboxClient:
             return r.json()['results'][0]['id']
 
     def get_tenants_id(self, name):
+        """
+        获取tenants id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/tenancy/tenants"
         params = {
             "name": name
@@ -204,6 +290,17 @@ class NetboxClient:
             return response.json()['results'][0]['id']
 
     def assign_ipaddress_to_interface(self, address: str, device: str, interface_name: str) -> ReturnResponse:
+        """
+        执行 assign ipaddress to interface 相关逻辑。
+
+        Args:
+            address: address 参数。
+            device: device 参数。
+            interface_name: interface_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/ipam/ip-addresses/"
         data = {
             "address": address,
@@ -227,6 +324,21 @@ class NetboxClient:
                                      assigned_object_id: int=None
                                     ):
 
+        """
+        新增or update ipam ipaddress。
+
+        Args:
+            address: address 参数。
+            status: status 参数。
+            tenant: tenant 参数。
+            ip_type: ip_type 参数。
+            description: description 参数。
+            assigned_object_type: assigned_object_type 参数。
+            assigned_object_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         data =  {
             "address": address,
             "tenant": self.get_tenants_id(name=tenant),
@@ -280,6 +392,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"{address} 创建成功!", data=create_response.json())
 
     def get_ipam_prefix_id(self, prefix):
+        """
+        获取ipam prefix id。
+
+        Args:
+            prefix: prefix 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/ipam/prefixes/"
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         for prefix in response.json()['results']:
@@ -288,6 +409,15 @@ class NetboxClient:
         return None
     
     def get_prefix_id_by_prefix(self, prefix):
+        """
+        获取prefix id by prefix。
+
+        Args:
+            prefix: prefix 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/ipam/prefixes/"
         params = {
             "prefix": prefix
@@ -312,6 +442,19 @@ class NetboxClient:
                                   description: str=None,
                                   tenant: str=None
                                 ):
+        """
+        新增or update ipam prefix。
+
+        Args:
+            prefix: prefix 参数。
+            status: status 参数。
+            vlan_id: 资源 ID。
+            description: description 参数。
+            tenant: tenant 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         data = {
             "prefix": prefix,
             "status": status,
@@ -335,6 +478,16 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"{prefix} 创建成功!", data=create_response.json())
   
     def get_ipam_ip_range_id(self, start_address, end_address):
+        """
+        获取ipam ip range id。
+
+        Args:
+            start_address: start_address 参数。
+            end_address: end_address 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/ipam/ip-ranges/"
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         for ip_range in response.json()['results']:
@@ -343,6 +496,19 @@ class NetboxClient:
         return None
 
     def add_or_update_ip_ranges(self, start_address, end_address, status: Literal['active', 'reserved', 'deprecated']='active', description: str=None, comments: str=None):
+        """
+        新增or update ip ranges。
+
+        Args:
+            start_address: start_address 参数。
+            end_address: end_address 参数。
+            status: status 参数。
+            description: description 参数。
+            comments: comments 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         data = {
             "start_address": start_address,
             "end_address": end_address,
@@ -369,6 +535,15 @@ class NetboxClient:
             return ReturnResponse(code=0, message=f"{start_address} 创建成功!", data=create_response)
 
     def get_tenants_id(self, name):
+        """
+        获取tenants id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = "/api/tenancy/tenants"
         params = {
             "name": name
@@ -416,6 +591,15 @@ class NetboxClient:
         return ReturnResponse(code=0, msg=f"[{action}] tenant [{name}], slug [{slug}] success!", data=r)
     
     def _process_slug(self, name):
+        """
+        执行 process slug 相关逻辑。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         slug_mapping = {
             "联想": "Lenovo",
             "群晖": "Synology",
@@ -449,10 +633,28 @@ class NetboxClient:
         return slug.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace('（', '').replace('）', '').replace('+','').replace('’', '').replace("'", "")
     
     def _process_gps(self, value):
+        """
+        执行 process gps 相关逻辑。
+
+        Args:
+            value: value 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         value = value.replace('\u200c\u200c', '')
         return round(float(value), 2) if value is not None else None
     
     def get_manufacturer_id_by_name(self, name):
+        """
+        获取manufacturer id by name。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/manufacturers/'
         params = {
             "name": name
@@ -472,6 +674,18 @@ class NetboxClient:
                                   manufacturer: str=None
                                   ):
         
+        """
+        新增or update device type。
+
+        Args:
+            model: model 参数。
+            slug: slug 参数。
+            u_height: u_height 参数。
+            manufacturer: manufacturer 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if slug is None:
             slug = self._process_slug(name=model)
         
@@ -509,6 +723,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"{model} 创建成功!", data=create_response.json())
 
     def get_device_type_id(self, model):
+        """
+        获取device type id。
+
+        Args:
+            model: model 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/device-types/'
         params = {
             "model": model
@@ -522,6 +745,15 @@ class NetboxClient:
             return response.json()['results'][0]['id']
 
     def get_manufacturer_id(self, name):
+        """
+        获取manufacturer id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/manufacturers/'
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         for manufacturer in response.json()['results']:
@@ -567,6 +799,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"manufacturer {name} 创建成功!", data=create_response.json())
     
     def get_device_id_by_name(self, name):
+        """
+        获取device id by name。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/devices/'
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         for device in response.json()['results']:
@@ -575,6 +816,15 @@ class NetboxClient:
         return None
     
     def get_tenant_id(self, name):
+        """
+        获取tenant id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/tenants/'
         params = {
             "name": name
@@ -590,6 +840,15 @@ class NetboxClient:
             return response.json()['results'][0]['id']
     
     def get_site_id(self, name):
+        """
+        获取site id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/sites/'
         params = {
             "name": name
@@ -601,6 +860,16 @@ class NetboxClient:
         return None
     
     def get_device_id(self, name: str=None, tenant_id: str=None):
+        """
+        获取device id。
+
+        Args:
+            name: name 参数。
+            tenant_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/devices/'
         params = {
             "name": name,
@@ -616,6 +885,15 @@ class NetboxClient:
             return response.json()['results'][0]['id']
     
     def get_device_type_id_by_name(self, name):
+        """
+        获取device type id by name。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if name is not None:
             api_url = '/api/dcim/device-types/'
             params = {
@@ -650,6 +928,30 @@ class NetboxClient:
                              comments: str=None,
                              software_version: str=None,
                         ):
+        """
+        新增or update device。
+
+        Args:
+            name: name 参数。
+            device_type: device_type 参数。
+            site: site 参数。
+            status: status 参数。
+            role: role 参数。
+            description: description 参数。
+            primary_ip4: primary_ip4 参数。
+            latitude: latitude 参数。
+            longitude: longitude 参数。
+            rack: rack 参数。
+            tenant: tenant 参数。
+            serial: serial 参数。
+            face: face 参数。
+            position: position 参数。
+            comments: comments 参数。
+            software_version: software_version 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/devices/'
         data = {
             "name": name,
@@ -688,6 +990,17 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"device {name} created successfully!", data=create_response.json())
     
     def set_primary_ip4_to_device(self, device_name, tenant, primary_ip4):
+        """
+        设置primary ip4 to device。
+
+        Args:
+            device_name: device_name 参数。
+            tenant: tenant 参数。
+            primary_ip4: primary_ip4 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/devices/'
         data = {
             "name": device_name,
@@ -705,6 +1018,15 @@ class NetboxClient:
             return ReturnResponse(code=1, msg=f"device {device_name} 不存在!", data=None)
     
     def get_device_role_id(self, name):
+        """
+        获取device role id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/device-roles/'
         params = {
             "name": name
@@ -723,6 +1045,18 @@ class NetboxClient:
                                   description: str=None,
                                   color: Literal['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray', 'black']='gray',
                             ) -> ReturnResponse:
+        """
+        新增or update device role。
+
+        Args:
+            name: name 参数。
+            slug: slug 参数。
+            description: description 参数。
+            color: color 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         color_map = {
             "red": "ff0000",
             "orange": "ffa500",
@@ -763,6 +1097,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"device role {name} 创建成功!", data=create_response.json())
     
     def get_contact_id(self, name):
+        """
+        获取contact id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/contacts/'
         parms = {
             "name": name
@@ -781,6 +1124,19 @@ class NetboxClient:
                                phone: str=None, 
                                id_card: str=None, 
                                description: str=None):
+        """
+        新增or update contacts。
+
+        Args:
+            name: name 参数。
+            email: email 参数。
+            phone: phone 参数。
+            id_card: id_card 参数。
+            description: description 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/contacts/'
         data = Parse.remove_dict_none_value({
             "name": name,
@@ -806,6 +1162,16 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"contact [{name}] 创建成功!", data=create_response.json())
     
     def get_rack_id(self, name, tenant):
+        """
+        获取rack id。
+
+        Args:
+            name: name 参数。
+            tenant: tenant 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/racks/'
         parms = {
             "name": name,
@@ -828,6 +1194,20 @@ class NetboxClient:
                            facility: str=None,
                         ):
         
+        """
+        新增or update rack。
+
+        Args:
+            site: site 参数。
+            name: name 参数。
+            status: status 参数。
+            tenant: tenant 参数。
+            u_height: u_height 参数。
+            facility: facility 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if status not in ['active', 'reserved', 'deprecated']:
             raise ValueError(f"rack status {status} 不合法!")
         
@@ -856,6 +1236,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"rack {name} 创建成功!", data=create_response.json())
     
     def get_tags_id(self, name):
+        """
+        获取tags id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/extras/tags/'
         params = {
             "name": name
@@ -869,6 +1258,17 @@ class NetboxClient:
             return response.json()['results'][0]['id']
     
     def add_or_update_tags(self, name: str, slug: str, color: str):
+        """
+        新增or update tags。
+
+        Args:
+            name: name 参数。
+            slug: slug 参数。
+            color: color 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/extras/tags/'
         data = {
             "name": name,
@@ -890,6 +1290,16 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"tag {name} 创建成功!", data=create_response.json())
     
     def get_interface_id(self, device, name):
+        """
+        获取interface id。
+
+        Args:
+            device: device 参数。
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/interfaces/'
         params = {
             "name": name,
@@ -915,6 +1325,22 @@ class NetboxClient:
                                  poe_mode: Literal['pd', 'pse']=None,
                                  poe_type: Literal['type2-ieee802.3at']=None,
                                  description: str=None):
+        """
+        新增or update interfaces。
+
+        Args:
+            name: name 参数。
+            device: device 参数。
+            interface_type: interface_type 参数。
+            tenant: tenant 参数。
+            label: label 参数。
+            poe_mode: poe_mode 参数。
+            poe_type: poe_type 参数。
+            description: description 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/interfaces/'
         data = {
             "name": name,
@@ -945,6 +1371,15 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"interface {name} 创建成功!", data=create_response.json())
     
     def get_contact_role_id(self, name):
+        """
+        获取contact role id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/contact-roles/'
         params = {
             "name": name
@@ -958,6 +1393,15 @@ class NetboxClient:
             return response.json()['results'][0]['id']
     
     def add_or_update_contact_role(self, name: str):
+        """
+        新增or update contact role。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/contact-roles/'
         slug = self._process_slug(name=name)
         data = {
@@ -979,6 +1423,17 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"contact role {name} 创建成功!", data=create_response.json())
     
     def is_contact_assignmentd(self, contact_id: int, object_type: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface'], role: str):
+        """
+        判断是否contact assignmentd。
+
+        Args:
+            contact_id: 资源 ID。
+            object_type: object_type 参数。
+            role: role 参数。
+
+        Returns:
+            bool: 是否满足条件。
+        """
         api_url = '/api/tenancy/contact-assignments/'
         params = {
             "contact_id": contact_id,
@@ -991,6 +1446,17 @@ class NetboxClient:
             return True
         
     def get_contact_assignment_id(self, contact_id: int, object_type: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface'], role: str):
+        """
+        获取contact assignment id。
+
+        Args:
+            contact_id: 资源 ID。
+            object_type: object_type 参数。
+            role: role 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/contact-assignments/'
         params = {
             "contact_id": contact_id,
@@ -1006,6 +1472,19 @@ class NetboxClient:
                                  object_name: str, 
                                  role: str,
                                  priority: Literal['primary', 'secondary', 'tertiary', 'inactive']='primary') -> ReturnResponse:
+        """
+        执行 assign contact to object 相关逻辑。
+
+        Args:
+            contact: contact 参数。
+            object_type: object_type 参数。
+            object_name: object_name 参数。
+            role: role 参数。
+            priority: priority 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/tenancy/contact-assignments/'
         if object_type == 'dcim.site':
             object_id = self.get_site_id(name=object_name)
@@ -1048,11 +1527,26 @@ class NetboxClient:
         
     
     def get_object_type(self):
+        """
+        获取object type。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/extras/object-types/'
         response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
         return response.json()['results']
     
     def get_object_type_id(self, name: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface', 'dcim.device-type', 'dcim.manufacturer', 'dcim.virtual-chassis', 'dcim.cable', 'dcim.power-outlet', 'dcim.power-port', 'dcim.power-feed', 'dcim.power-panel', 'dcim.power-outlet-template', 'dcim.power-port-template', 'dcim.power-feed-template', 'dcim.power-panel-template']):
+        """
+        获取object type id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/extras/object-types/'
         app_label, model = name.split('.')[0], name.split('.')[1]
         params = {
@@ -1068,6 +1562,15 @@ class NetboxClient:
             return response.json()['results'][0]['id']
     
     def get_site_id(self, name):
+        """
+        获取site id。
+
+        Args:
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/sites/'
         params = {
             "name": name
@@ -1086,6 +1589,17 @@ class NetboxClient:
         # if status not in ['active', 'staging', 'planned', 'decommissioning', 'retired']:
         #     raise ValueError(f"site status {status} 不合法!")
         
+        """
+        新增or update sites。
+
+        Args:
+            name: name 参数。
+            slug: slug 参数。
+            tenant: tenant 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/sites/'
         data = {
             "name": name,
@@ -1108,6 +1622,17 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"site {name} 创建成功!", data=create_response.json())
     
     def get_devices(self, tenant: str=None, device_type: str=None, manufacturer: str=None):
+        """
+        获取devices。
+
+        Args:
+            tenant: tenant 参数。
+            device_type: device_type 参数。
+            manufacturer: manufacturer 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         url = f"{self.url}/api/dcim/devices/"
         params = {
             "tenant": tenant,
@@ -1127,6 +1652,16 @@ class NetboxClient:
         return results
     
     def get_power_port_id(self, device, name):
+        """
+        获取power port id。
+
+        Args:
+            device: device 参数。
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/power-ports/'
         params = {
             "name": name,
@@ -1190,6 +1725,16 @@ class NetboxClient:
                 return ReturnResponse(code=0, msg=f"power port [{device} {name}] created successfully!", data=create_response.json())
     
     def get_console_port_id(self, device, name):
+        """
+        获取console port id。
+
+        Args:
+            device: device 参数。
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/console-ports/'
         params = {
             "name": name,
@@ -1204,6 +1749,18 @@ class NetboxClient:
             return response.json()['results'][0]['id']
     
     def add_or_update_console_port(self, device, name, port_type: Literal['rj-45']='rj-45', description: str=None):
+        """
+        新增or update console port。
+
+        Args:
+            device: device 参数。
+            name: name 参数。
+            port_type: port_type 参数。
+            description: description 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         api_url = '/api/dcim/console-ports/'
         data = {
             "device": self.get_device_id(name=device),

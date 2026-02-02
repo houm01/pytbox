@@ -10,6 +10,11 @@ from typing import Literal
 
 class TimeUtils:
     
+    """
+    TimeUtils 类。
+
+    用于 Time Utils 相关能力的封装。
+    """
     @staticmethod
     def get_time_object(now: bool=True):
         '''
@@ -23,14 +28,37 @@ class TimeUtils:
     
     @staticmethod
     def get_utc_time():
+        """
+        获取utc time。
+
+        Returns:
+            Any: 返回值。
+        """
         return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     
     @staticmethod
     def get_now_time_mongo():
+        """
+        获取now time mongo。
+
+        Returns:
+            Any: 返回值。
+        """
         return datetime.datetime.now(pytz.timezone('Asia/Shanghai'))
 
     @staticmethod
     def convert_timeobj_to_str(timeobj: str=None, timezone_offset: int=8, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S'):
+        """
+        转换timeobj to str。
+
+        Args:
+            timeobj: timeobj 参数。
+            timezone_offset: timezone_offset 参数。
+            time_format: time_format 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         time_obj_with_offset = timeobj + datetime.timedelta(hours=timezone_offset)
         if time_format == '%Y-%m-%d %H:%M:%S':
             return time_obj_with_offset.strftime("%Y-%m-%d %H:%M:%S")
@@ -144,6 +172,15 @@ class TimeUtils:
     @staticmethod
     def timestamp_to_timestr_dida(timestamp):
         # 将时间戳转换为 UTC 时间
+        """
+        执行 timestamp to timestr dida 相关逻辑。
+
+        Args:
+            timestamp: timestamp 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         utc_time = datetime.datetime.fromtimestamp(timestamp, tz=datetime.timezone.utc)
 
         # 将 UTC 时间转换为指定时区（+08:00）
@@ -159,16 +196,45 @@ class TimeUtils:
         
     @staticmethod
     def timestamp_to_datetime_obj(timestamp: int, timezone_offset: int=8):
+        """
+        执行 timestamp to datetime obj 相关逻辑。
+
+        Args:
+            timestamp: timestamp 参数。
+            timezone_offset: timezone_offset 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return datetime.datetime.fromtimestamp(timestamp, tz=ZoneInfo(f'Etc/GMT-{timezone_offset}'))
 
     @staticmethod
     def datetime_obj_to_str(datetime_obj, add_timezone=False):
+        """
+        执行 datetime obj to str 相关逻辑。
+
+        Args:
+            datetime_obj: datetime_obj 参数。
+            add_timezone: add_timezone 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if add_timezone:
             datetime_obj = datetime_obj.astimezone(pytz.timezone('Asia/Shanghai'))
         return datetime_obj.strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
     def get_current_time(app: Literal['notion', 'dida365']):
+        """
+        获取current time。
+
+        Args:
+            app: app 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if app == 'notion':
             return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
         elif app == 'dida365':
@@ -177,6 +243,15 @@ class TimeUtils:
     @staticmethod
     def get_current_date_str(output_format: Literal['%Y%m%d', '%Y-%m-%d']='%Y%m%d') -> str:
         # 获取当前日期和时间
+        """
+        获取current date str。
+
+        Args:
+            output_format: output_format 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         now = datetime.datetime.now()
 
         # 格式化为字符串
@@ -208,6 +283,12 @@ class TimeUtils:
     @staticmethod
     def get_yesterday_date_str() -> str:
         # 获取昨天日期
+        """
+        获取yesterday date str。
+
+        Returns:
+            Any: 返回值。
+        """
         yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
         yesterday_date_str = yesterday.strftime("%Y%m%d")
         return yesterday_date_str
@@ -215,6 +296,12 @@ class TimeUtils:
     @staticmethod
     def get_last_month_date_str() -> str:
         # 获取上个月日期
+        """
+        获取last month date str。
+
+        Returns:
+            Any: 返回值。
+        """
         last_month = datetime.datetime.now() - datetime.timedelta(days=30)
         last_month_date_str = last_month.strftime("%Y-%m")
         return last_month_date_str
@@ -222,6 +309,15 @@ class TimeUtils:
     @staticmethod
     def get_current_time_str(time_format: Literal['%Y%m%d_%H%M', '%Y-%m-%d %H:%M:%S']='%Y%m%d_%H%M') -> str:
         # 获取当前日期和时间
+        """
+        获取current time str。
+
+        Args:
+            time_format: time_format 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         now = datetime.datetime.now()
 
         # 格式化为字符串
@@ -234,6 +330,17 @@ class TimeUtils:
             offset_days: int=None,
             offset_hours: int=None
         ) -> str:
+        """
+        获取time str。
+
+        Args:
+            time_format: time_format 参数。
+            offset_days: offset_days 参数。
+            offset_hours: offset_hours 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if offset_days is None:
             offset_days = 0
         if offset_hours is None:
@@ -264,10 +371,26 @@ class TimeUtils:
             
     @staticmethod
     def get_timestamp_tomorrow() -> int:
+        """
+        获取timestamp tomorrow。
+
+        Returns:
+            Any: 返回值。
+        """
         return int(time.time()) * 1000 + 24 * 60 * 60 * 1000
     
     @staticmethod
     def get_timestamp_last_day(last_days: int=0, unit: Literal['ms', 's']='ms') -> int:
+        """
+        获取timestamp last day。
+
+        Args:
+            last_days: last_days 参数。
+            unit: unit 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if last_days == 0:
             if unit == 'ms':
                 return int(time.time()) * 1000
@@ -278,11 +401,28 @@ class TimeUtils:
     
     @staticmethod
     def get_today_timestamp() -> int:
+        """
+        获取today timestamp。
+
+        Returns:
+            Any: 返回值。
+        """
         return int(time.time()) * 1000
 
 
     @staticmethod
     def convert_timeobj_to_str(timeobj: str=None, timezone_offset: int=8, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S'):
+        """
+        转换timeobj to str。
+
+        Args:
+            timeobj: timeobj 参数。
+            timezone_offset: timezone_offset 参数。
+            time_format: time_format 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         time_obj_with_offset = timeobj + datetime.timedelta(hours=timezone_offset)
         if time_format == '%Y-%m-%d %H:%M:%S':
             return time_obj_with_offset.strftime("%Y-%m-%d %H:%M:%S")
@@ -321,6 +461,16 @@ class TimeUtils:
 
     @staticmethod
     def convert_timeobj_add_timezone(timeobj: datetime.datetime, timezone_offset: int=8) -> datetime.datetime:
+        """
+        转换timeobj add timezone。
+
+        Args:
+            timeobj: timeobj 参数。
+            timezone_offset: timezone_offset 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return timeobj + datetime.timedelta(hours=timezone_offset)
 
     @staticmethod

@@ -9,6 +9,14 @@ class Notion:
     Notion API 简单封装类
     '''
     def __init__(self, token: str, proxy: str = None, timeout: int=10):
+        """
+        初始化对象。
+
+        Args:
+            token: token 参数。
+            proxy: proxy 参数。
+            timeout: timeout 参数。
+        """
         self.token = token
         self.headers = {
             "accept": "application/json",

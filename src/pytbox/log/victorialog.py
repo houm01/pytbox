@@ -13,6 +13,13 @@ class Victorialog:
     _summary_
     '''
     def __init__(self, url: str=None, timeout: int=3):
+        """
+        初始化对象。
+
+        Args:
+            url: url 参数。
+            timeout: timeout 参数。
+        """
         self.url = url
         self.timeout = timeout
 
@@ -28,6 +35,22 @@ class Victorialog:
         ) -> ReturnResponse:
         
         # 如果没有提供timestamp，自动生成ISO 8601格式的UTC时间
+        """
+        发送program log。
+
+        Args:
+            stream: stream 参数。
+            date: date 参数。
+            level: level 参数。
+            message: message 参数。
+            app_name: app_name 参数。
+            file_name: file_name 参数。
+            line_number: line_number 参数。
+            function_name: function_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if date is None:
             date = TimeUtils.get_utc_time()
         
@@ -62,6 +85,20 @@ class Victorialog:
     def send_syslog(self, stream, hostname, ip, level, message, date):
 
         # 如果没有提供timestamp，自动生成ISO 8601格式的UTC时间
+        """
+        发送syslog。
+
+        Args:
+            stream: stream 参数。
+            hostname: hostname 参数。
+            ip: ip 参数。
+            level: level 参数。
+            message: message 参数。
+            date: date 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if date is None:
             date = TimeUtils.get_utc_time()
         

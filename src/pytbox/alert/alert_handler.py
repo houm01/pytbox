@@ -12,6 +12,11 @@ from ..mail.client import MailClient
 
 class AlertHandler:
     
+    """
+    AlertHandler 类。
+
+    用于 Alert Handler 相关能力的封装。
+    """
     def __init__(self, 
                  config: dict=None,
                  mongo_client: Mongo=None,
@@ -21,6 +26,17 @@ class AlertHandler:
                  env: Literal['dev', 'prod']='prod'
             ):
      
+        """
+        初始化对象。
+
+        Args:
+            config: config 参数。
+            mongo_client: mongo_client 参数。
+            feishu_client: feishu_client 参数。
+            dida_client: dida_client 参数。
+            mail_client: mail_client 参数。
+            env: env 参数。
+        """
         self.config = config
         self.mongo = mongo_client
         self.feishu = feishu_client
@@ -45,6 +61,28 @@ class AlertHandler:
                  event_description: str=None
             ):
         
+        """
+        发送alert。
+
+        Args:
+            event_id: 资源 ID。
+            event_type: event_type 参数。
+            event_time: event_time 参数。
+            event_name: event_name 参数。
+            event_content: event_content 参数。
+            entity_name: entity_name 参数。
+            priority: priority 参数。
+            resolved_expr: resolved_expr 参数。
+            suggestion: suggestion 参数。
+            troubleshot: troubleshot 参数。
+            actions: actions 参数。
+            history: history 参数。
+            mongo_id: 资源 ID。
+            event_description: event_description 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if not event_id:
             event_id = str(uuid.uuid4())
         if not event_time:

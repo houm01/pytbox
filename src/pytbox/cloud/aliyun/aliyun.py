@@ -8,6 +8,11 @@ from pytbox.cloud.aliyun.ram import RAMResource
 
 @dataclass(frozen=True)
 class AliyunOptions:
+    """
+    AliyunOptions 类。
+
+    用于 Aliyun Options 相关能力的封装。
+    """
     timeout_s: float = 8.0
     retries: int = 1
     retry_backoff_s: float = 0.5
@@ -31,6 +36,15 @@ class Aliyun:
         region: str,
         options: AliyunOptions | None = None,
     ) -> None:
+        """
+        初始化对象。
+
+        Args:
+            ak: ak 参数。
+            sk: sk 参数。
+            region: region 参数。
+            options: options 参数。
+        """
         opt = options or AliyunOptions()
 
         self._client = AliyunClient(

@@ -15,6 +15,15 @@ class AliMail:
     _summary_
     '''
     def __init__(self, mail_address: str=None, client_id: str=None, client_secret: str=None, timeout: int=3):
+        """
+        初始化对象。
+
+        Args:
+            mail_address: mail_address 参数。
+            client_id: 资源 ID。
+            client_secret: client_secret 参数。
+            timeout: timeout 参数。
+        """
         self.email_address = mail_address
         self.client_id = client_id
         self.client_secret = client_secret
@@ -67,6 +76,12 @@ class AliMail:
             raise e
 
     def get_mail_folders(self):
+        """
+        获取mail folders。
+
+        Returns:
+            Any: 返回值。
+        """
         response = self.session.get(
             url=f"{self.base_url}/users/{self.email_address}/mailFolders",
             headers=self.headers
@@ -74,6 +89,15 @@ class AliMail:
         return response.json().get('folders')
 
     def get_folder_id(self, folder_name: Literal['inbox']='inbox'):
+        """
+        获取folder id。
+
+        Args:
+            folder_name: folder_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         folders = self.get_mail_folders()
         for folder in folders:
             if folder.get('displayName') == folder_name:
@@ -81,6 +105,15 @@ class AliMail:
         return None
 
     def get_mail_detail(self, mail_id: str):
+        """
+        获取mail detail。
+
+        Args:
+            mail_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         params = {
             "$select": "body,toRecipients,internetMessageId,internetMessageHeaders"
         }
@@ -93,6 +126,16 @@ class AliMail:
         return response.json().get('message')
 
     def get_mail_list(self, folder_name: str='inbox', size: int=100):
+        """
+        获取mail list。
+
+        Args:
+            folder_name: folder_name 参数。
+            size: size 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         folder_id = self.get_folder_id(folder_name=folder_name)
         params = {
             "size": size,
@@ -125,6 +168,16 @@ class AliMail:
             )
 
     def move(self, uid: str, destination_folder: str) -> ReturnResponse:
+        """
+        执行 move 相关逻辑。
+
+        Args:
+            uid: uid 参数。
+            destination_folder: destination_folder 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         params = {
             "ids": [uid],
             "destinationFolderId": self.get_folder_id(destination_folder)

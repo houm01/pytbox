@@ -12,12 +12,22 @@ from pytbox.cloud.aliyun.errors import map_tea_exception
 
 @dataclass(frozen=True)
 class AliyunCreds:
+    """
+    AliyunCreds 类。
+
+    用于 Aliyun Creds 相关能力的封装。
+    """
     ak: str
     sk: str
 
 
 @dataclass(frozen=True)
 class AliyunConfig:
+    """
+    AliyunConfig 类。
+
+    用于 Aliyun Config 相关能力的封装。
+    """
     region: str
     timeout_s: float = 8.0
     retries: int = 1
@@ -28,7 +38,19 @@ class AliyunConfig:
 
 
 class AliyunClient:
+    """
+    AliyunClient 类。
+
+    用于 Aliyun Client 相关能力的封装。
+    """
     def __init__(self, *, creds: AliyunCreds, cfg: AliyunConfig):
+        """
+        初始化对象。
+
+        Args:
+            creds: creds 参数。
+            cfg: cfg 参数。
+        """
         self.creds = creds
         self.cfg = cfg
         self._ecs = self._create_ecs_client()
@@ -36,6 +58,12 @@ class AliyunClient:
         self._ram = self._create_ram_client()
 
     def _create_ecs_client(self) -> ecs_client.Client:
+        """
+        执行 create ecs client 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         config = open_api_models.Config(
             access_key_id=self.creds.ak,
             access_key_secret=self.creds.sk,
@@ -46,6 +74,12 @@ class AliyunClient:
         return ecs_client.Client(config)
 
     def _create_cms_client(self) -> Cms20190101Client:
+        """
+        执行 create cms client 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         config = open_api_models.Config(
             access_key_id=self.creds.ak,
             access_key_secret=self.creds.sk,
@@ -56,6 +90,12 @@ class AliyunClient:
         return Cms20190101Client(config)
 
     def _create_ram_client(self) -> Ram20150501Client:
+        """
+        执行 create ram client 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         config = open_api_models.Config(
             access_key_id=self.creds.ak,
             access_key_secret=self.creds.sk,
@@ -67,14 +107,32 @@ class AliyunClient:
 
     @property
     def ecs(self) -> ecs_client.Client:
+        """
+        执行 ecs 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         return self._ecs
 
     @property
     def cms(self) -> Cms20190101Client:
+        """
+        执行 cms 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         return self._cms
 
     @property
     def ram(self) -> Ram20150501Client:
+        """
+        执行 ram 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         return self._ram
 
     def call(self, action: str, fn):

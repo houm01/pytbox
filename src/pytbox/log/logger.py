@@ -175,6 +175,15 @@ class AppLogger:
             self.sls.put_logs(level="CRITICAL", msg=message, app=self.app_name, caller_filename=caller_filename, caller_lineno=caller_lineno, caller_function=caller_function, call_full_filename=call_full_filename)
     
     def exception(self, message: str):
+        """
+        执行 exception 相关逻辑。
+
+        Args:
+            message: message 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         caller_filename, caller_lineno, caller_function, call_full_filename = self._get_caller_info()
         logger.exception(f"[{caller_filename}:{caller_lineno}:{caller_function}] {message}")
         tb = traceback.format_exc()

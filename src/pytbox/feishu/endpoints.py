@@ -16,20 +16,48 @@ from ..utils.response import ReturnResponse
 
 class Endpoint:
 
+    """
+    Endpoint 类。
+
+    用于 Endpoint 相关能力的封装。
+    """
     def __init__(self, parent: "BaseClient") -> None:
+        """
+        初始化对象。
+
+        Args:
+            parent: parent 参数。
+        """
         self.parent = parent
 
 
 class AuthEndpoint(Endpoint):
 
+    """
+    AuthEndpoint 类。
+
+    用于 Auth Endpoint 相关能力的封装。
+    """
     token_path = '/tmp/.feishu_token'
 
     def save_token_to_file(self):
+        """
+        保存token to file。
+
+        Returns:
+            Any: 返回值。
+        """
         with shelve.open(self.token_path) as db:
             db['token'] = self.refresh_access_token()
             return True
     
     def fetch_token_from_file(self):
+        """
+        获取token from file。
+
+        Returns:
+            Any: 返回值。
+        """
         with shelve.open(self.token_path) as db:
             token = db.get('token')
             return token
@@ -51,6 +79,12 @@ class AuthEndpoint(Endpoint):
                 return os.environ.get('TENANT_ACCESS_TOKEN')
 
     def refresh_access_token(self):
+        """
+        刷新access token。
+
+        Returns:
+            Any: 返回值。
+        """
         payload = dict(
             app_id=self.parent.app_id,
             app_secret=self.parent.app_secret
@@ -65,11 +99,26 @@ class AuthEndpoint(Endpoint):
 
 class MessageEndpoint(Endpoint):
 
+    """
+    MessageEndpoint 类。
+
+    用于 Message Endpoint 相关能力的封装。
+    """
     def send_text(self,
                   text: str,
                   receive_id: str):
         
 
+        """
+        发送text。
+
+        Args:
+            text: text 参数。
+            receive_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         format_message_content = json.dumps({ "text": text }, ensure_ascii=False)
 
         payload = {
@@ -171,6 +220,17 @@ class MessageEndpoint(Endpoint):
                                    body=payload)
 
     def send_file(self, file_name, file_path, receive_id):
+        """
+        发送file。
+
+        Args:
+            file_name: file_name 参数。
+            file_path: file_path 参数。
+            receive_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         receive_id_type = self.parent.extensions.parse_receive_id_type(receive_id=receive_id)
         content = {
             "file_key": self.parent.extensions.upload_file(file_name=file_name, file_path=file_path)
@@ -205,6 +265,16 @@ class MessageEndpoint(Endpoint):
                             method='GET')
     
     def reply(self, message_id, content):
+        """
+        执行 reply 相关逻辑。
+
+        Args:
+            message_id: 资源 ID。
+            content: content 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         content = {
             "text": content
         }
@@ -221,6 +291,16 @@ class MessageEndpoint(Endpoint):
         )
     
     def forward(self, message_id, receive_id):
+        """
+        执行 forward 相关逻辑。
+
+        Args:
+            message_id: 资源 ID。
+            receive_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         receive_id_type = self.parent.extensions.parse_receive_id_type(receive_id=receive_id)
         payload = {
             "receive_id": receive_id
@@ -299,6 +379,11 @@ class MessageEndpoint(Endpoint):
 
 class BitableEndpoint(Endpoint):
     
+    """
+    BitableEndpoint 类。
+
+    用于 Bitable Endpoint 相关能力的封装。
+    """
     def list_records(self, app_token, table_id, field_names: list=None, automatic_fields: bool=False, filter_conditions: list=None, conjunction: Literal['and', 'or']='and', sort_field_name: str=None, view_id: str=None):
         '''
         如果是多维表格中的表格, 需要先获取 app_token
@@ -345,6 +430,17 @@ class BitableEndpoint(Endpoint):
             pass
     
     def add_record(self, app_token, table_id, fields):
+        """
+        新增record。
+
+        Args:
+            app_token: app_token 参数。
+            table_id: 资源 ID。
+            fields: fields 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         payload = {
             "fields": fields
         }
@@ -477,6 +573,19 @@ class BitableEndpoint(Endpoint):
             return ReturnResponse(code=resp.code, msg=f"记录不存在, 进行创建", data=resp.data)
 
     def query_name_by_record_id(self, app_token: str=None, table_id: str=None, field_names: list=None, record_id: str='', name: str=''):
+        """
+        查询name by record id。
+
+        Args:
+            app_token: app_token 参数。
+            table_id: 资源 ID。
+            field_names: field_names 参数。
+            record_id: 资源 ID。
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         response = self.query_record(app_token=app_token, table_id=table_id, field_names=field_names)
         if response.code == 0:
             for item in response.data['items']:
@@ -489,7 +598,23 @@ class BitableEndpoint(Endpoint):
 
 class DocsEndpoint(Endpoint):
 
+    """
+    DocsEndpoint 类。
+
+    用于 Docs Endpoint 相关能力的封装。
+    """
     def rename_doc_title(self, space_id, node_token, title):
+        """
+        执行 rename doc title 相关逻辑。
+
+        Args:
+            space_id: 资源 ID。
+            node_token: node_token 参数。
+            title: title 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         payload = {
             "title": title
         }
@@ -570,11 +695,36 @@ class DocsEndpoint(Endpoint):
                                     body=payload)
     
     def create_block_children(self, document_id: str=None, block_id: str=None, payload: dict=None):
+        """
+        创建block children。
+
+        Args:
+            document_id: 资源 ID。
+            block_id: 资源 ID。
+            payload: payload 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/children',
                                     method='POST',
                                     body=payload)
 
     def update_block(self, document_id: str=None, block_id: str=None, replace_image_token: str=None, image_width: int=100, image_height: int=100, image_align: int=2):
+        """
+        更新block。
+
+        Args:
+            document_id: 资源 ID。
+            block_id: 资源 ID。
+            replace_image_token: replace_image_token 参数。
+            image_width: image_width 参数。
+            image_height: image_height 参数。
+            image_align: image_align 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         payload = {}
         if replace_image_token:
             payload['replace_image'] = {
@@ -588,6 +738,11 @@ class DocsEndpoint(Endpoint):
                                     body=payload)
 
 class CalendarEndpoint(Endpoint):
+    """
+    CalendarEndpoint 类。
+
+    用于 Calendar Endpoint 相关能力的封装。
+    """
     def get_events(self, 
                    calendar_id: str='feishu.cn_dQ4cLmSfGa1QSWqv3EvpLf@group.calendar.feishu.cn', 
                    start_time: int=int(time.time()) - 30*24*60*60, 
@@ -595,6 +750,19 @@ class CalendarEndpoint(Endpoint):
                    page_size: int=500,
                    anchor_time: int=None
                 ):
+        """
+        获取events。
+
+        Args:
+            calendar_id: 资源 ID。
+            start_time: start_time 参数。
+            end_time: end_time 参数。
+            page_size: page_size 参数。
+            anchor_time: anchor_time 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if anchor_time:
             anchor_time = f'&anchor_time={anchor_time}'
         else:
@@ -604,7 +772,21 @@ class CalendarEndpoint(Endpoint):
 
 
 class ExtensionsEndpoint(Endpoint):
+    """
+    ExtensionsEndpoint 类。
+
+    用于 Extensions Endpoint 相关能力的封装。
+    """
     def parse_receive_id_type(self, receive_id):
+        """
+        解析receive id type。
+
+        Args:
+            receive_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         if receive_id.startswith('ou'):
             receive_id_type = 'open_id'
         elif receive_id.startswith('oc'):
@@ -615,6 +797,16 @@ class ExtensionsEndpoint(Endpoint):
 
     def upload_file(self, file_name, file_path):
 
+        """
+        上传file。
+
+        Args:
+            file_name: file_name 参数。
+            file_path: file_path 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         files = {
             'file_type': ('', 'stream'),
             'file_name': ('', file_name),
@@ -626,6 +818,15 @@ class ExtensionsEndpoint(Endpoint):
                                    files=files).data['file_key']
 
     def upload_image(self, image_path):
+        """
+        上传image。
+
+        Args:
+            image_path: image_path 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         import requests
         from requests_toolbelt import MultipartEncoder
         
@@ -653,6 +854,16 @@ class ExtensionsEndpoint(Endpoint):
     
     
     def build_block_heading(self, content, heading_level: Literal[1, 2, 3, 4]):
+        """
+        构建block heading。
+
+        Args:
+            content: content 参数。
+            heading_level: heading_level 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return {
             "index": 0,
             "children": [
@@ -673,6 +884,17 @@ class ExtensionsEndpoint(Endpoint):
         }
     
     def build_block_element(self, content: str=None, background_color: int=None, text_color: int=None):
+        """
+        构建block element。
+
+        Args:
+            content: content 参数。
+            background_color: background_color 参数。
+            text_color: text_color 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         element = {
                 "text_run": {
                     "content": content,
@@ -917,10 +1139,30 @@ class ExtensionsEndpoint(Endpoint):
         return result
 
     def build_bitable_text(self, text: str=None):
+        """
+        构建bitable text。
+
+        Args:
+            text: text 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return {"title": text}
 
     def build_block_image(self, file_path, percent: int=100, image_align: int=2):
 
+        """
+        构建block image。
+
+        Args:
+            file_path: file_path 参数。
+            percent: percent 参数。
+            image_align: image_align 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         from PIL import Image
         with Image.open(file_path) as img:
             width, height = img.size
@@ -942,6 +1184,16 @@ class ExtensionsEndpoint(Endpoint):
         }
 
     def upload_media(self, file_path: str, block_id: str):
+        """
+        上传media。
+
+        Args:
+            file_path: file_path 参数。
+            block_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         file_size = os.path.getsize(file_path)
         url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_all"
         form = {'file_name': 'demo.jpeg',
@@ -959,6 +1211,16 @@ class ExtensionsEndpoint(Endpoint):
     
     def create_block(self, blocks, document_id):
             # 交换blocks中元素的顺序
+        """
+        创建block。
+
+        Args:
+            blocks: blocks 参数。
+            document_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         blocks.reverse()
         
         for block in blocks:
@@ -1003,6 +1265,16 @@ class ExtensionsEndpoint(Endpoint):
                 print(block)
     
     def parse_bitable_data(self, fields, name):
+        """
+        解析bitable data。
+
+        Args:
+            fields: fields 参数。
+            name: name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         final_data = None
         
         if fields.get(name) != None:
@@ -1041,6 +1313,17 @@ class ExtensionsEndpoint(Endpoint):
             return fields[name]
 
     def get_user_info(self, email: str=None, mobile: str=None, get: Literal['open_id', 'all']='all') -> ReturnResponse:
+        """
+        获取user info。
+
+        Args:
+            email: email 参数。
+            mobile: mobile 参数。
+            get: get 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         payload = {
             "include_resigned": True,
         }
@@ -1062,6 +1345,17 @@ class ExtensionsEndpoint(Endpoint):
             return ReturnResponse(code=response.code, msg=f"获取时失败, 报错请见 data 字段", data=response.data)
     
     def format_rich_text(self, text: str, color: Literal['red', 'green', 'yellow', 'blue'], bold: bool=False):
+        """
+        格式化rich text。
+
+        Args:
+            text: text 参数。
+            color: color 参数。
+            bold: bold 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if bold:
             text = f"**{text}**"
 
@@ -1071,6 +1365,15 @@ class ExtensionsEndpoint(Endpoint):
         return text
     
     def convert_str_to_dict(self, text: str):
+        """
+        转换str to dict。
+
+        Args:
+            text: text 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return json.loads(text)
     
     def parse_message_card_elements(self, elements: list | dict) -> str:
@@ -1092,6 +1395,15 @@ class ExtensionsEndpoint(Endpoint):
         texts: list[str] = []
 
         def walk(node: Any) -> None:
+            """
+            遍历。
+
+            Args:
+                node: node 参数。
+
+            Returns:
+                Any: 返回值。
+            """
             if node is None:
                 return
             if isinstance(node, dict):
@@ -1118,6 +1430,20 @@ class ExtensionsEndpoint(Endpoint):
                             priority: str='P0',
                             content: str='Test'
                         ):
+        """
+        发送message notify。
+
+        Args:
+            receive_id: 资源 ID。
+            color: color 参数。
+            title: title 参数。
+            sub_title: sub_title 参数。
+            priority: priority 参数。
+            content: content 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return self.parent.message.send_card(
             template_id="AAqzcy5Qrx84H",
             template_variable={
@@ -1131,6 +1457,16 @@ class ExtensionsEndpoint(Endpoint):
         )
     
     def get_user_info_by_open_id(self, open_id: str, get: Literal['name', 'all']='all'):
+        """
+        获取user info by open id。
+
+        Args:
+            open_id: 资源 ID。
+            get: get 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         response = self.parent.request(path=f'/contact/v3/users/{open_id}?department_id_type=open_department_id&user_id_type=open_id',
                                    method='GET')
         if response.code == 0:
@@ -1154,6 +1490,25 @@ class ExtensionsEndpoint(Endpoint):
                           priority: Literal['P0', 'P1', 'P2', 'P3', 'P4']='P2',
                           receive_id: str=None
                         ):
+        """
+        发送alert notify。
+
+        Args:
+            event_content: event_content 参数。
+            event_name: event_name 参数。
+            entity_name: entity_name 参数。
+            event_time: event_time 参数。
+            resolved_time: resolved_time 参数。
+            event_description: event_description 参数。
+            actions: actions 参数。
+            history: history 参数。
+            color: color 参数。
+            priority: priority 参数。
+            receive_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         template_variable={
                 "color": color,
                 "event_content": event_content,

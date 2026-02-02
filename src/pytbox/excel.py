@@ -7,10 +7,27 @@ from openpyxl.styles import Font
 
 
 class ExcelFormat:
+    """
+    ExcelFormat 类。
+
+    用于 Excel Format 相关能力的封装。
+    """
     def __init__(self, ws):
+        """
+        初始化对象。
+
+        Args:
+            ws: ws 参数。
+        """
         self.ws = ws
         
     def set_column(self):
+        """
+        设置column。
+
+        Returns:
+            Any: 返回值。
+        """
         for column in self.ws.columns:
             max_length = 0
             column = [cell for cell in column]
@@ -25,6 +42,12 @@ class ExcelFormat:
             
     def set_rows_center(self):
         # 将所有单元格的文字居中
+        """
+        设置rows center。
+
+        Returns:
+            Any: 返回值。
+        """
         for row in self.ws.iter_rows():
             
             for cell in row:

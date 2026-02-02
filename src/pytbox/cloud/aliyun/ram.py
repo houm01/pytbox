@@ -6,10 +6,27 @@ from alibabacloud_tea_util import models as util_models
 
 
 class RAMResource:
+    """
+    RAMResource 类。
+
+    用于 RAM Resource 相关能力的封装。
+    """
     def __init__(self, client):
+        """
+        初始化对象。
+
+        Args:
+            client: client 参数。
+        """
         self._c = client
 
     def get_users(self) -> ReturnResponse:
+        """
+        获取users。
+
+        Returns:
+            Any: 返回值。
+        """
         list_user_request = ram_20150501_models.ListUsersRequest()
         runtime = util_models.RuntimeOptions()
         r = self._c.call(
@@ -76,6 +93,16 @@ class RAMResource:
             )
     
     def get_access_key_last_used(self, username, user_access_key_id) -> ReturnResponse:
+        """
+        获取access key last used。
+
+        Args:
+            username: username 参数。
+            user_access_key_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         get_access_key_last_used_request = ram_20150501_models.GetAccessKeyLastUsedRequest(
             user_name=username,
             user_access_key_id=user_access_key_id
@@ -105,6 +132,15 @@ class RAMResource:
             )
     
     def get_user_mfa_info(self, username) -> ReturnResponse:
+        """
+        获取user mfa info。
+
+        Args:
+            username: username 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         get_user_mfa_info_request = ram_20150501_models.GetUserMFAInfoRequest(
             user_name=username
         )
@@ -129,6 +165,15 @@ class RAMResource:
             )
     
     def get_user_info(self, username) -> ReturnResponse:
+        """
+        获取user info。
+
+        Args:
+            username: username 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         get_user_info_request = ram_20150501_models.GetUserRequest(
             user_name=username
         )
@@ -157,6 +202,15 @@ class RAMResource:
             )
     
     def get_policy_for_user(self, username) -> ReturnResponse:
+        """
+        获取policy for user。
+
+        Args:
+            username: username 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         list_policy_for_user_request = ram_20150501_models.ListPoliciesForUserRequest(
             user_name=username
         )

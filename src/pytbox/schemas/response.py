@@ -19,12 +19,43 @@ class ReturnResponse(BaseModel):
     
     @classmethod
     def ok(cls, data: Any = None, msg: str = "OK"):
+        """
+        执行 ok 相关逻辑。
+
+        Args:
+            data: data 参数。
+            msg: msg 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return cls(code=int(RespCode.OK), msg=msg, data=data)
     
     @classmethod
     def fail(cls, code: RespCode, msg: str, data: Any = None):
+        """
+        执行 fail 相关逻辑。
+
+        Args:
+            code: code 参数。
+            msg: msg 参数。
+            data: data 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return cls(code=code, msg=msg, data=data)
     
     @classmethod
     def no_data(cls, msg: str = "No data", data: Any = None):
+        """
+        执行 no data 相关逻辑。
+
+        Args:
+            msg: msg 参数。
+            data: data 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return cls(code=int(RespCode.NO_DATA), msg=msg, data=data)

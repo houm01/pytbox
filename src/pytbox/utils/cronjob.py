@@ -17,8 +17,27 @@ def cronjob_counter(vm: VictoriaMetrics=None, log: str=None, app_type: Literal['
         schedule_cron: cron 表达式（如 '0 */5 * * *'）
     """
     def decorator(func):
+        """
+        执行 decorator 相关逻辑。
+
+        Args:
+            func: func 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         @wraps(func)
         def wrapper(*args, **kwargs):
+            """
+            执行 wrapper 相关逻辑。
+
+            Args:
+                *args: 可变参数。
+                **kwargs: 可变参数。
+
+            Returns:
+                Any: 返回值。
+            """
             start_time = time.time()
             
             try:

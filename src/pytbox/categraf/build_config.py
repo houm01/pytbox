@@ -24,13 +24,38 @@ class BuildConfig:
         output_dir (_type_): _description_
     '''
     def __init__(self, instances, output_dir):
+        """
+        初始化对象。
+
+        Args:
+            instances: instances 参数。
+            output_dir: output_dir 参数。
+        """
         self.instances = load_config_by_file(instances)
         self.output_dir = output_dir
     
     def _get_template(self, template_name):
+        """
+        执行 get template 相关逻辑。
+
+        Args:
+            template_name: template_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         return env.get_template(template_name)
 
     def common(self, input_name):
+        """
+        执行 common 相关逻辑。
+
+        Args:
+            input_name: input_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         template = self._get_template(f'input.{input_name}/{input_name}.toml.j2')
         render_data = template.render()
         target_dir = Path(self.output_dir) / f'input.{input_name}'
@@ -41,6 +66,12 @@ class BuildConfig:
             f.write(render_data)
 
     def ping(self):
+        """
+        探测。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.instances.get('ping'):
             instances = self.instances['ping']['instance']
             render_data = ping_template.render(instances=instances)
@@ -52,6 +83,12 @@ class BuildConfig:
                 f.write(render_data)
 
     def prometheus(self):
+        """
+        执行 prometheus 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.instances.get('prometheus'):
             instances = self.instances['prometheus']['urls']
             render_data = prometheus_template.render(instances=instances)
@@ -62,6 +99,12 @@ class BuildConfig:
                 f.write(render_data)
 
     def vsphere(self):
+        """
+        执行 vsphere 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.instances.get('vsphere'):
             template = self._get_template('input.vsphere/vsphere.toml.j2')
             instances = self.instances['vsphere']['instance']
@@ -73,6 +116,12 @@ class BuildConfig:
                 f.write(render_data)
 
     def http_response(self):
+        """
+        执行 http response 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         template = self._get_template('input.http_response/http_response.toml.j2')
         if self.instances.get('http_response'):
             instances = self.instances['http_response']['instance']
@@ -84,6 +133,12 @@ class BuildConfig:
                 f.write(render_data)
 
     def net_response(self):
+        """
+        执行 net response 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         template = self._get_template('input.net_response/net_response.toml.j2')
         if self.instances.get('net_response'):
             instances = self.instances['net_response']['instance']
@@ -95,6 +150,12 @@ class BuildConfig:
                 f.write(render_data)
 
     def dns_query(self):
+        """
+        执行 dns query 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         template = self._get_template('input.dns_query/dns_query.toml.j2')
         if self.instances.get('dns_query'):
             instances = self.instances['dns_query']['instance']
@@ -106,6 +167,12 @@ class BuildConfig:
                 f.write(render_data)
 
     def snmp(self):
+        """
+        执行 snmp 相关逻辑。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.instances.get('snmp'):
             device_types = self.instances['snmp']['instances']
             for device_type in device_types:
@@ -129,6 +196,12 @@ class BuildConfig:
                         f.write(render_data)
 
     def run(self):
+        """
+        执行。
+
+        Returns:
+            Any: 返回值。
+        """
         self.common('cpu')
         self.common('mem')
         self.common('net')

@@ -24,12 +24,22 @@ from pytbox.cloud.aliyun import Aliyun
 from pytbox.cloud.volc import Volc
 from pytbox.database.vm.backend import HTTPBackend
 from pytbox.database.vm.client import VictoriaMetricsClient
+from pytbox.utils.home_dir import HOME_DIR
 
 
-config = load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
+config = load_config_by_file(path=f'{HOME_DIR()}/tests/alert/config_dev.toml', oc_vault_id=os.environ.get('oc_vault_id'))
 
 
 def get_mongo(collection):
+    """
+    获取mongo。
+
+    Args:
+        collection: collection 参数。
+
+    Returns:
+        Any: 返回值。
+    """
     return Mongo(
         host=config['mongo']['host'],
         port=config['mongo']['port'],
@@ -55,6 +65,15 @@ dida = Dida365(
 alert_handler = AlertHandler(config=config, mongo_client=get_mongo('alert_test'), feishu_client=feishu, dida_client=dida)
 
 def get_logger(app):
+    """
+    获取logger。
+
+    Args:
+        app: app 参数。
+
+    Returns:
+        Any: 返回值。
+    """
     return AppLogger(
         app_name=app, 
         enable_victorialog=True, 
@@ -65,6 +84,15 @@ def get_logger(app):
     )
 
 def get_logger_sls(app):
+    """
+    获取logger sls。
+
+    Args:
+        app: app 参数。
+
+    Returns:
+        Any: 返回值。
+    """
     return AppLogger(
         app_name=app, 
         enable_sls=True,
@@ -120,6 +148,19 @@ sls = AliCloudSls(
 )
 
 def get_cronjob_counter(app_type='', app='', comment=None, schedule_interval=None, schedule_cron=None):
+    """
+    获取cronjob counter。
+
+    Args:
+        app_type: app_type 参数。
+        app: app 参数。
+        comment: comment 参数。
+        schedule_interval: schedule_interval 参数。
+        schedule_cron: schedule_cron 参数。
+
+    Returns:
+        Any: 返回值。
+    """
     return cronjob_counter(vm=vm, log=get_logger('cronjob_counter'), app_type=app_type, app=app, comment=comment, schedule_interval=schedule_interval, schedule_cron=schedule_cron)
 
 
@@ -129,6 +170,12 @@ mingdao = Mingdao(app_key=config['mingdao']['app_key'], sign=config['mingdao']['
 netbox = NetboxClient(url=config['netbox']['url'], token=config['netbox']['token'])
 
 def get_aliyun() -> Aliyun:
+    """
+    获取aliyun。
+
+    Returns:
+        Any: 返回值。
+    """
     ali = Aliyun(
         ak=config['aliyun']['account1']['access_key_id'],
         sk=config['aliyun']['account1']['access_key_secret'],
@@ -137,6 +184,12 @@ def get_aliyun() -> Aliyun:
     return ali
 
 def get_aliyun_tyun() -> Aliyun:
+    """
+    获取aliyun tyun。
+
+    Returns:
+        Any: 返回值。
+    """
     ali = Aliyun(
         ak=config['aliyun']['account_tyun']['access_key_id'],
         sk=config['aliyun']['account_tyun']['access_key_secret'],
@@ -146,6 +199,12 @@ def get_aliyun_tyun() -> Aliyun:
 
 
 def get_volc() -> Volc:
+    """
+    获取volc。
+
+    Returns:
+        Any: 返回值。
+    """
     volc = Volc(
         ak=config['volc']['account1']['access_key_id'],
         sk=config['volc']['account1']['access_key_secret'],
@@ -155,5 +214,11 @@ def get_volc() -> Volc:
 
 
 def get_vm_client() -> VictoriaMetricsClient:
+    """
+    获取vm client。
+
+    Returns:
+        Any: 返回值。
+    """
     backend = HTTPBackend(base_url=config['victoriametrics']['url'], timeout=10)
     return VictoriaMetricsClient(backend)

@@ -6,37 +6,89 @@ class PytboxError(Exception):
 
 
 class AuthError(PytboxError):
+    """
+    AuthError 类。
+
+    用于 Auth Error 相关能力的封装。
+    """
     pass
 
 
 class PermissionError(PytboxError):
+    """
+    PermissionError 类。
+
+    用于 Permission Error 相关能力的封装。
+    """
     pass
 
 
 class ThrottledError(PytboxError):
+    """
+    ThrottledError 类。
+
+    用于 Throttled Error 相关能力的封装。
+    """
     pass
 
 
 class TimeoutError(PytboxError):
+    """
+    TimeoutError 类。
+
+    用于 Timeout Error 相关能力的封装。
+    """
     pass
 
 
 class NotFoundError(PytboxError):
+    """
+    NotFoundError 类。
+
+    用于 Not Found Error 相关能力的封装。
+    """
     pass
 
 
 class RegionError(PytboxError):
+    """
+    RegionError 类。
+
+    用于 Region Error 相关能力的封装。
+    """
     pass
 
 
 class UpstreamError(PytboxError):
+    """
+    UpstreamError 类。
+
+    用于 Upstream Error 相关能力的封装。
+    """
     def __init__(self, message: str, *, upstream_code: str | None = None):
+        """
+        初始化对象。
+
+        Args:
+            message: message 参数。
+            upstream_code: upstream_code 参数。
+        """
         super().__init__(message)
         self.upstream_code = upstream_code
 
 
 def map_tea_exception(action: str, e: Exception) -> Exception:
     # 不可重试上游异常
+    """
+    映射tea exception。
+
+    Args:
+        action: action 参数。
+        e: e 参数。
+
+    Returns:
+        Any: 返回值。
+    """
     if isinstance(e, UnretryableException):
         return UpstreamError(f"{action} upstream unretryable error")
 

@@ -8,11 +8,30 @@ from onepasswordconnectsdk.models import (Item, Field)
 class OnePasswordConnect:
     '''tbd'''
     def __init__(self, vault_id):
+        """
+        初始化对象。
+
+        Args:
+            vault_id: 资源 ID。
+        """
         self.client = new_client_from_environment()
         self.vault_id = vault_id
 
     def create_item(self, name, username: str=None, password: str=None, notes: str="create by automation", tags: List=None):
         # Create an item
+        """
+        创建item。
+
+        Args:
+            name: name 参数。
+            username: username 参数。
+            password: password 参数。
+            notes: notes 参数。
+            tags: tags 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         new_item = Item(
             title=name,
             category="LOGIN",
@@ -27,9 +46,27 @@ class OnePasswordConnect:
         return created_item
 
     def delete_item(self, item_id):
+        """
+        删除item。
+
+        Args:
+            item_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         return self.client.delete_item(self.vault_id, item_id)
     
     def get_item(self, item_id):
+        """
+        获取item。
+
+        Args:
+            item_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         item = self.client.get_item(item_id, self.vault_id)
         return item
     
@@ -77,6 +114,16 @@ class OnePasswordConnect:
         return self.client.update_item(item_id, self.vault_id, update_item)
 
     def search_item(self, title: str=None, tag: str=None) -> list:
+        """
+        执行 search item 相关逻辑。
+
+        Args:
+            title: title 参数。
+            tag: tag 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if title:
             filter_query = f'title eq "{title}"'
         if tag:

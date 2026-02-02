@@ -9,6 +9,15 @@ class ADClient:
     _summary_
     '''
     def __init__(self, server, base_dn, username, password):
+        """
+        初始化对象。
+
+        Args:
+            server: server 参数。
+            base_dn: base_dn 参数。
+            username: username 参数。
+            password: password 参数。
+        """
         self.server = Server(server, get_info=ALL)
         self.conn = Connection(self.server, user=username, password=password, auto_bind=True)
         self.base_dn = base_dn

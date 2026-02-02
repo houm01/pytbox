@@ -12,6 +12,14 @@ class Mingdao:
     _summary_
     '''
     def __init__(self, app_key: str=None, sign: str=None, timeout: int=5):
+        """
+        初始化对象。
+
+        Args:
+            app_key: app_key 参数。
+            sign: sign 参数。
+            timeout: timeout 参数。
+        """
         self.base_url = "https://api.mingdao.com"
         self.headers = {
             'Content-Type': 'application/json;charset=UTF-8',
@@ -22,6 +30,19 @@ class Mingdao:
         self.sign = sign
 
     def _build_api_request(self, api_url: str, method: Literal['GET', 'POST'], params: dict=None, body: dict=None, api_version: Literal['v1', 'v2']='v2'):
+        """
+        执行 build api request 相关逻辑。
+
+        Args:
+            api_url: api_url 参数。
+            method: method 参数。
+            params: params 参数。
+            body: body 参数。
+            api_version: api_version 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         body['appKey'] = self.app_key
         body['sign'] = self.sign
         if not api_url.startswith('/'):
@@ -45,6 +66,17 @@ class Mingdao:
         return ReturnResponse(code=0, msg='获取应用信息成功', data=r.json())
     
     def get_work_sheet_info(self, worksheet_id: str=None, table_name: str=None, worksheet_name: str=None):
+        """
+        获取work sheet info。
+
+        Args:
+            worksheet_id: 资源 ID。
+            table_name: table_name 参数。
+            worksheet_name: worksheet_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         if worksheet_name:
             worksheet_id = self.get_work_sheet_id_by_name(table_name=table_name, worksheet_name=worksheet_name)
         
@@ -58,6 +90,16 @@ class Mingdao:
         return r.json()
     
     def get_project_info(self, worksheet_id: str, keywords: str):
+        """
+        获取project info。
+
+        Args:
+            worksheet_id: 资源 ID。
+            keywords: keywords 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         r = self._build_api_request(
             api_url='open/worksheet/getFilterRows',
             method='POST',
@@ -71,6 +113,17 @@ class Mingdao:
         return r.json()
     
     def get_work_sheet_id_by_name(self, table_name: str, worksheet_name: str, child_section: bool=False):
+        """
+        获取work sheet id by name。
+
+        Args:
+            table_name: table_name 参数。
+            worksheet_name: worksheet_name 参数。
+            child_section: child_section 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         r = self.get_app_info()        
         for i in r.data['data']['sections']:
             if table_name == i['name']:
@@ -84,6 +137,17 @@ class Mingdao:
                             return item['id']
 
     def get_control_id(self, table_name: str=None, worksheet_name: str=None, control_name: str=None):
+        """
+        获取control id。
+
+        Args:
+            table_name: table_name 参数。
+            worksheet_name: worksheet_name 参数。
+            control_name: control_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         r = self.get_work_sheet_info(table_name=table_name, worksheet_name=worksheet_name)
         for control in r['data']['controls']:
             if control['controlName'] == control_name:
@@ -91,6 +155,18 @@ class Mingdao:
         return None
     
     def get_value(self, table_name: str=None, worksheet_name: str=None, control_name: str=None, value_name: str=None):
+        """
+        获取value。
+
+        Args:
+            table_name: table_name 参数。
+            worksheet_name: worksheet_name 参数。
+            control_name: control_name 参数。
+            value_name: value_name 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         control_id = self.get_control_id(table_name=table_name, worksheet_name=worksheet_name, control_name=control_name)
   
         r = self._build_api_request(
@@ -117,6 +193,21 @@ class Mingdao:
                         page_size: int=100,
                     ):
         
+        """
+        获取work record。
+
+        Args:
+            worksheet_id: 资源 ID。
+            project_control_id: 资源 ID。
+            project_value: project_value 参数。
+            complete_date_control_id: 资源 ID。
+            complete_date: complete_date 参数。
+            parse_control_id: 资源 ID。
+            page_size: page_size 参数。
+
+        Returns:
+            Any: 返回值。
+        """
         filters = []
         if project_value:
             filters.append({

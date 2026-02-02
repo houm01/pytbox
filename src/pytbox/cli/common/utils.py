@@ -26,6 +26,13 @@ class Logger:
     """增强的日志器，支持 rich 格式化输出"""
     
     def __init__(self, verbose: bool = False, quiet: bool = False):
+        """
+        初始化对象。
+
+        Args:
+            verbose: verbose 参数。
+            quiet: quiet 参数。
+        """
         self.verbose = verbose
         self.quiet = quiet
         
@@ -229,6 +236,16 @@ def create_tree_view(data: dict, title: str = "数据结构") -> None:
         tree = Tree(title)
         
         def add_dict_to_tree(node, data_dict):
+            """
+            新增dict to tree。
+
+            Args:
+                node: node 参数。
+                data_dict: data_dict 参数。
+
+            Returns:
+                Any: 返回值。
+            """
             for key, value in data_dict.items():
                 if isinstance(value, dict):
                     child = node.add(f"[bold blue]{key}[/bold blue]")
@@ -251,6 +268,16 @@ def create_tree_view(data: dict, title: str = "数据结构") -> None:
         logger.info(f"=== {title} ===")
         
         def print_dict(data_dict, indent=0):
+            """
+            打印dict。
+
+            Args:
+                data_dict: data_dict 参数。
+                indent: indent 参数。
+
+            Returns:
+                Any: 返回值。
+            """
             for key, value in data_dict.items():
                 prefix = "  " * indent
                 if isinstance(value, dict):

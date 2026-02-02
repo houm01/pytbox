@@ -104,6 +104,15 @@ class VMwareClient:
             return ReturnResponse(code=1, msg='error', data=response.json())
    
     def get_vm(self, vm_id):
+        """
+        获取vm。
+
+        Args:
+            vm_id: 资源 ID。
+
+        Returns:
+            Any: 返回值。
+        """
         if self.version == '6.7':
             url = f"{self.host}/rest/vcenter/vm/{vm_id}"
         else:

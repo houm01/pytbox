@@ -3,6 +3,11 @@ from enum import IntEnum
 
 
 class RespCode(IntEnum):
+    """
+    RespCode 类。
+
+    用于 Resp Code 相关能力的封装。
+    """
     OK = 0
     
     # 3xxx: victoriametics

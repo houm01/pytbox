@@ -17,6 +17,13 @@ class MailClient:
                  password: str=None
                 ):
         
+        """
+        初始化对象。
+
+        Args:
+            mail_address: mail_address 参数。
+            password: password 参数。
+        """
         self.mail_address = mail_address
         self.password = password
 

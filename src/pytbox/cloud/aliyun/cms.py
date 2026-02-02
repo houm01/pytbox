@@ -9,7 +9,18 @@ from ...utils.response import ReturnResponse
 
 
 class CMSResource:
+    """
+    CMSResource 类。
+
+    用于 CMS Resource 相关能力的封装。
+    """
     def __init__(self, client):
+        """
+        初始化对象。
+
+        Args:
+            client: client 参数。
+        """
         self._c = client
 
     def get_metric_data(
@@ -50,6 +61,15 @@ class CMSResource:
             tz = pytz.timezone("Asia/Shanghai")
 
             def to_str(ts):
+                """
+                执行 to str 相关逻辑。
+
+                Args:
+                    ts: ts 参数。
+
+                Returns:
+                    Any: 返回值。
+                """
                 return datetime.fromtimestamp(ts, tz).strftime("%Y-%m-%d %H:%M:%S")
 
             start_str = to_str(start_s)
