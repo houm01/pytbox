@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 
-from pydantic import BaseModel
+# from pydantic import BaseModel
 
 
-class QueryM
+# class QueryM

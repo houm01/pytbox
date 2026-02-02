@@ -9,7 +9,6 @@ client = get_vm_client()
 
 
 
-
 # 打印 promql 命令
 # collector_backend = PromQLCollectorBackend()
 # promql_client = VictoriaMetricsClient(collector_backend)
