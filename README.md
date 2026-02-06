@@ -112,6 +112,15 @@ if error_response.is_error():
     print("操作失败:", error_response.msg)
 ```
 
+## 设计规格（Specs）
+
+- [Feishu Client Spec](docs/specs/2026-02-feishu/README.md)
+- [Dida365 Refactor Spec](docs/specs/2026-02-dida365-refactor/README.md)
+
+## 文档
+
+- [Dida365 使用文档](docs/dida365.md)
+
 ## API 文档
 
 ### VictoriaMetrics

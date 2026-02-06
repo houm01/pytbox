@@ -9,6 +9,7 @@ class RespCode(IntEnum):
     用于 Resp Code 相关能力的封装。
     """
     OK = 0
+    INVALID_PARAMS = 1001
     
     # 3xxx: victoriametics
     VM_REQUEST_FAILED = 3001
@@ -21,4 +22,3 @@ class RespCode(IntEnum):
     
     # 5xxx: business non-error states
     NO_DATA = 5001
-

@@ -2,7 +2,8 @@
 
 
 import uuid
-from typing import Literal
+from dataclasses import dataclass, field
+from typing import Literal, Any, Dict, Optional
 from ..database.mongo import Mongo
 from ..feishu.client import Client as FeishuClient
 from ..dida365 import Dida365
@@ -87,28 +88,56 @@ class AlertHandler:
             event_id = str(uuid.uuid4())
         if not event_time:
             event_time = TimeUtils.get_now_time_mongo()
+
+        result = AlertSendResult(
+            event_id=event_id,
+            event_type=event_type,
+            mongo=ChannelResult(enabled=self.mongo is not None),
+            feishu=ChannelResult(enabled=bool(self.config and self.config.get("feishu", {}).get("enable_alert"))),
+            mail=ChannelResult(enabled=bool(self.config and self.config.get("mail", {}).get("enable_mail"))),
+            dida=ChannelResult(enabled=bool(self.config and self.config.get("dida", {}).get("enable_alert"))),
+            wecom=ChannelResult(enabled=bool(self.config and self.config.get("wecom", {}).get("enable"))),
+        )
     
         if self.mongo.check_alarm_exist(event_type=event_type, event_content=event_content):
-            if event_type == "trigger":
-                self.mongo.collection.insert_one(
-                    {
-                        'event_id': event_id,
-                        'event_type': event_type,
-                        'event_name': event_name,
-                        'event_time': event_time,
-                        'event_content': event_content,
-                        'entity_name': entity_name,
-                        'priority': priority,
-                        'resolved_expr': resolved_expr,
-                        'suggestion': suggestion,
-                        'troubleshot': troubleshot,
+            try:
+                if event_type == "trigger":
+                    result.mongo.action = "insert"
+                    r = self.mongo.collection.insert_one(
+                        {
+                            'event_id': event_id,
+                            'event_type': event_type,
+                            'event_name': event_name,
+                            'event_time': event_time,
+                            'event_content': event_content,
+                            'entity_name': entity_name,
+                            'priority': priority,
+                            'resolved_expr': resolved_expr,
+                            'suggestion': suggestion,
+                            'troubleshot': troubleshot,
+                        }
+                    )
+                    result.mongo.ok = True
+                    result.mongo.data = {"inserted_id": str(r.inserted_id)}
+                    alarm_time = event_time
+                elif event_type == "resolved":
+                    result.mongo.action = "update"
+                    filter_doc = {"_id": mongo_id}
+                    update = {"$set": {"resolved_time": event_time}}
+                    r = self.mongo.collection.update_one(filter_doc, update)
+                    alarm_doc = self.mongo.collection.find_one(filter_doc, {'event_time': 1, 'dida_task_id': 1})
+                    alarm_time = alarm_doc['event_time'] if alarm_doc else event_time
+                    result.mongo.ok = True
+                    result.mongo.data = {
+                        "matched": getattr(r, "matched_count", None),
+                        "modified": getattr(r, "modified_count", None),
                     }
-                )
-            elif event_type == "resolved":
-                filter_doc = {"_id": mongo_id}
-                update = {"$set": { "resolved_time": event_time}}
-                self.mongo.collection.update_one(filter_doc, update)
-                alarm_time = self.mongo.collection.find_one(filter_doc, {'event_time': 1})['event_time']
+                else:
+                    alarm_time = event_time
+            except Exception as e:
+                result.mongo.ok = False
+                result.mongo.error = str(e)
+                alarm_time = event_time
             
             content = [
                 f'**事件名称**: {event_name}',
@@ -123,29 +152,33 @@ class AlertHandler:
             if event_type == "resolved":
                 content.insert(2, f'**恢复时间**: {TimeUtils.convert_timeobj_to_str(event_time, timezone_offset=0)}')
     
-            if self.config['feishu']['enable_alert']:
+            if result.feishu.enabled:
                 
                 if event_type == "trigger":
                     alarm_time = TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)
                     resolved_time = None
                 else:
-                    alarm_time = self.mongo.collection.find_one(filter_doc, {'event_time': 1})['event_time']
                     alarm_time = TimeUtils.convert_timeobj_to_str(timeobj=alarm_time, timezone_offset=8)
                     resolved_time = TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)
-                    
-                r = self.feishu.extensions.send_alert_notify(
-                    event_content=event_content,
-                    event_name=event_name,
-                    entity_name=entity_name,
-                    event_time=alarm_time,
-                    resolved_time=resolved_time,
-                    event_description=event_description,
-                    actions=actions if actions is not None else troubleshot,
-                    history=history if history is not None else self.mongo.recent_alerts(event_content=event_content),
-                    color='red' if event_type == "trigger" else 'green',
-                    priority=priority,
-                    receive_id=self.config['feishu']['receive_id']
-                )
+                try:
+                    r = self.feishu.extensions.send_alert_notify(
+                        event_content=event_content,
+                        event_name=event_name,
+                        entity_name=entity_name,
+                        event_time=alarm_time,
+                        resolved_time=resolved_time,
+                        event_description=event_description,
+                        actions=actions if actions is not None else troubleshot,
+                        history=history if history is not None else self.mongo.recent_alerts(event_content=event_content),
+                        color='red' if event_type == "trigger" else 'green',
+                        priority=priority,
+                        receive_id=self.config['feishu']['receive_id']
+                    )
+                    result.feishu.ok = True
+                    result.feishu.data = getattr(r, "data", r)
+                except Exception as e:
+                    result.feishu.ok = False
+                    result.feishu.error = str(e)
                 # self.feishu.extensions.send_message_notify(
                 #     receive_id=self.config['feishu']['receive_id'],
                 #     color='red' if event_type == "trigger" else 'green',
@@ -155,48 +188,92 @@ class AlertHandler:
                 #     content='\n'.join(content)
                 # )
             
-            if self.config['mail']['enable_mail']:
-                if event_type == "trigger":
-                    self.mail.send_mail(
-                        receiver=[self.config['mail']['mail_address']],
-                        subject=f"{self.config['mail']['subject_trigger']}, {event_content}",
-                        contents=f"event_content:{event_content}, alarm_time: {str(event_time)}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}"
-                    )
-                else:
-                    self.mail.send_mail(
-                        receiver=[self.config['mail']['mail_address']],
-                        subject=f"{self.config['mail']['subject_resolved']}, {event_content}",
-                        contents=f"event_content:{event_content}, alarm_time: {str(TimeUtils.get_now_time_mongo())}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}"
-                    )
+            if result.mail.enabled:
+                try:
+                    if event_type == "trigger":
+                        r = self.mail.send_mail(
+                            receiver=[self.config['mail']['mail_address']],
+                            subject=f"{self.config['mail']['subject_trigger']}, {event_content}",
+                            contents=f"event_content:{event_content}, alarm_time: {str(event_time)}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}"
+                        )
+                    else:
+                        r = self.mail.send_mail(
+                            receiver=[self.config['mail']['mail_address']],
+                            subject=f"{self.config['mail']['subject_resolved']}, {event_content}",
+                            contents=f"event_content:{event_content}, alarm_time: {str(TimeUtils.get_now_time_mongo())}, event_id: {event_id}, alarm_name: {event_name}, entity_name: {entity_name}, priority: {priority}, automate_ts: {troubleshot}, suggestion: {suggestion}"
+                        )
+                    result.mail.ok = True
+                    result.mail.data = r
+                except Exception as e:
+                    result.mail.ok = False
+                    result.mail.error = str(e)
             
-            if self.config['dida']['enable_alert']:
-                if event_type == "trigger":
-                    res = self.dida.task_create(
-                        project_id=self.config['dida']['alert_project_id'],
-                        title=event_content,
-                        content='\n'.join(content),
-                        tags=['L-监控告警', priority]
-                    )
-                    dida_task_id = res.data.get("id")
-                    self.mongo.collection.update_one(
-                        {
-                            "event_id": event_id
-                        },
-                        {
-                            "$set": {
-                                "dida_task_id": dida_task_id
-                            }
-                        }
-                    )
-                else:
-                    task_id = self.mongo.collection.find_one(filter_doc, {'dida_task_id': 1})['dida_task_id']
-                    self.dida.task_update(
-                        task_id=task_id,
-                        project_id=self.config['dida']['alert_project_id'], 
-                        content=f'\n**恢复时间**: {TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)}'
-                    )
-                    self.dida.task_complete(task_id=task_id, project_id=self.config['dida']['alert_project_id'])
+            if result.dida.enabled:
+                try:
+                    if event_type == "trigger":
+                        res = self.dida.task_create(
+                            project_id=self.config['dida']['alert_project_id'],
+                            title=event_content,
+                            content='\n'.join(content),
+                            tags=['L-监控告警', priority]
+                        )
+                        dida_task_id = res.data.get("id") if hasattr(res, "data") else None
+                        result.dida.data = {"task_id": dida_task_id}
+                        if dida_task_id:
+                            self.mongo.collection.update_one(
+                                {
+                                    "event_id": event_id
+                                },
+                                {
+                                    "$set": {
+                                        "dida_task_id": dida_task_id
+                                    }
+                                }
+                            )
+                    else:
+                        task_id = None
+                        if self.mongo and mongo_id:
+                            task_id = self.mongo.collection.find_one({"_id": mongo_id}, {'dida_task_id': 1}).get('dida_task_id')
+                        if task_id:
+                            self.dida.task_update(
+                                task_id=task_id,
+                                project_id=self.config['dida']['alert_project_id'], 
+                                content=f'\n**恢复时间**: {TimeUtils.convert_timeobj_to_str(timeobj=event_time, timezone_offset=0)}'
+                            )
+                            self.dida.task_complete(task_id=task_id, project_id=self.config['dida']['alert_project_id'])
+                        result.dida.data = {"task_id": task_id}
+                    result.dida.ok = True
+                except Exception as e:
+                    result.dida.ok = False
+                    result.dida.error = str(e)
                     
                 
-            if self.config['wecom']['enable']:
+            if result.wecom.enabled:
                 pass
+        else:
+            result.skipped = True
+            result.reason = "alarm not exist"
+
+        return result
+
+
+@dataclass
+class ChannelResult:
+    enabled: bool
+    ok: bool = False
+    action: Optional[str] = None
+    error: Optional[str] = None
+    data: Any = None
+
+
+@dataclass
+class AlertSendResult:
+    event_id: str
+    event_type: str
+    skipped: bool = False
+    reason: Optional[str] = None
+    mongo: ChannelResult = field(default_factory=lambda: ChannelResult(enabled=False))
+    feishu: ChannelResult = field(default_factory=lambda: ChannelResult(enabled=False))
+    mail: ChannelResult = field(default_factory=lambda: ChannelResult(enabled=False))
+    dida: ChannelResult = field(default_factory=lambda: ChannelResult(enabled=False))
+    wecom: ChannelResult = field(default_factory=lambda: ChannelResult(enabled=False))

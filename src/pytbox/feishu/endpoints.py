@@ -4,15 +4,11 @@ import os
 import json
 import uuid
 import time
-import requests
-import shelve
 from typing import TYPE_CHECKING, Literal, Any
 
 if TYPE_CHECKING:
-    from .client import BaseClient, FeishuResponse
-from .helpers import pick
-from requests_toolbelt import MultipartEncoder
-from ..utils.response import ReturnResponse
+    from .client import BaseClient
+from ..schemas.response import ReturnResponse
 
 class Endpoint:
 
@@ -38,64 +34,46 @@ class AuthEndpoint(Endpoint):
 
     用于 Auth Endpoint 相关能力的封装。
     """
-    token_path = '/tmp/.feishu_token'
+    token_path = "/tmp/.feishu_token.json"
 
-    def save_token_to_file(self):
+    def save_token_to_file(self) -> ReturnResponse:
         """
         保存token to file。
 
         Returns:
             Any: 返回值。
         """
-        with shelve.open(self.token_path) as db:
-            db['token'] = self.refresh_access_token()
-            return True
+        refresh_resp = self.parent.token_provider.refresh()
+        if refresh_resp.code != 0:
+            return refresh_resp
+        return ReturnResponse(code=0, msg="token refreshed and persisted", data=refresh_resp.data)
     
-    def fetch_token_from_file(self):
+    def fetch_token_from_file(self) -> ReturnResponse:
         """
         获取token from file。
 
         Returns:
             Any: 返回值。
         """
-        with shelve.open(self.token_path) as db:
-            token = db.get('token')
-            return token
+        return self.parent.token_provider.peek_file_token()
 
-    def get_tenant_access_token(self):
+    def get_tenant_access_token(self) -> ReturnResponse:
         '''
         _summary_
 
         Returns:
             _type_: _description_
         '''
-        if os.environ.get('TENANT_ACCESS_TOKEN'):
-            return os.environ.get('TENANT_ACCESS_TOKEN')
-        else:
-            print('未找到token， 开始刷新')
-            resp = self.refresh_access_token()
-            if resp.tenant_access_token:
-                os.environ['TENANT_ACCESS_TOKEN'] = resp.tenant_access_token
-                return os.environ.get('TENANT_ACCESS_TOKEN')
+        return self.parent.token_provider.get_token()
 
-    def refresh_access_token(self):
+    def refresh_access_token(self) -> ReturnResponse:
         """
         刷新access token。
 
         Returns:
             Any: 返回值。
         """
-        payload = dict(
-            app_id=self.parent.app_id,
-            app_secret=self.parent.app_secret
-        )
-
-        token = requests.request(method='POST', 
-                                    url=self.parent.options.base_url+'/auth/v3/tenant_access_token/internal', 
-                                    json=payload, timeout=5).json()['tenant_access_token']
-        
-        os.environ['TENANT_ACCESS_TOKEN'] = token
-        return token
+        return self.parent.token_provider.refresh()
 
 class MessageEndpoint(Endpoint):
 
@@ -133,11 +111,13 @@ class MessageEndpoint(Endpoint):
                                    method='POST',
                                    body=payload)
     
-    def send_post(self,
-                  receive_id: str=None,
-                  message_id: str=None,
-                  title: str=None,
-                  content: list=None):
+    def send_post(
+        self,
+        receive_id: str = None,
+        message_id: str = None,
+        title: str = None,
+        content: list = None,
+    ) -> ReturnResponse:
         '''
         发送富文本消息
 
@@ -182,10 +162,10 @@ class MessageEndpoint(Endpoint):
                 "msg_type": "post",
                 "uuid": str(uuid.uuid4())
             }
+        else:
+            return ReturnResponse(code=1001, msg="receive_id 或 message_id 必填", data=None)
 
-        return self.parent.request(path=f'/im/v1/messages?receive_id_type={receive_id_type}', 
-                                method='POST',
-                                body=payload)
+        return self.parent.request(path=api, method='POST', body=payload)
 
     def send_card(self, template_id: str, template_variable: dict=None, receive_id: str=None):
         '''
@@ -219,7 +199,7 @@ class MessageEndpoint(Endpoint):
                                    method='POST',
                                    body=payload)
 
-    def send_file(self, file_name, file_path, receive_id):
+    def send_file(self, file_name: str, file_path: str, receive_id: str) -> ReturnResponse:
         """
         发送file。
 
@@ -232,9 +212,16 @@ class MessageEndpoint(Endpoint):
             Any: 返回值。
         """
         receive_id_type = self.parent.extensions.parse_receive_id_type(receive_id=receive_id)
-        content = {
-            "file_key": self.parent.extensions.upload_file(file_name=file_name, file_path=file_path)
-        }
+        upload_resp = self.parent.extensions.upload_file(file_name=file_name, file_path=file_path)
+        if upload_resp.code != 0:
+            return upload_resp
+
+        upload_data = upload_resp.data if isinstance(upload_resp.data, dict) else {}
+        file_key = upload_data.get("file_key")
+        if not file_key:
+            return ReturnResponse(code=4001, msg="上传文件成功但未返回 file_key", data=upload_resp.data)
+
+        content = {"file_key": file_key}
         content = json.dumps(content, ensure_ascii=False)
         payload = {
             "content": content,
@@ -264,7 +251,7 @@ class MessageEndpoint(Endpoint):
         return self.parent.request(path=f'/im/v1/messages?container_id={chat_id}&container_id_type={chat_type}&end_time={end_time}&page_size={page_size}&sort_type=ByCreateTimeAsc&start_time={start_time}', 
                             method='GET')
     
-    def reply(self, message_id, content):
+    def reply(self, message_id: str, content: str) -> ReturnResponse:
         """
         执行 reply 相关逻辑。
 
@@ -285,12 +272,12 @@ class MessageEndpoint(Endpoint):
         	"uuid": str(uuid.uuid4())
         }
         return self.parent.request(
-            path=f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/reply",
+            path=f"/im/v1/messages/{message_id}/reply",
             method='POST',
             body=payload
         )
     
-    def forward(self, message_id, receive_id):
+    def forward(self, message_id: str, receive_id: str) -> ReturnResponse:
         """
         执行 forward 相关逻辑。
 
@@ -329,7 +316,7 @@ class MessageEndpoint(Endpoint):
         }
 
         r = self.parent.request(
-            path=f"im/v1/messages/{message_id}/reactions",
+            path=f"/im/v1/messages/{message_id}/reactions",
             method='POST',
             body=payload
         )
@@ -338,7 +325,13 @@ class MessageEndpoint(Endpoint):
         else:
             return ReturnResponse(code=1, msg=f"{message_id} 回复 emoji [{emoji_type}] 失败")
 
-    def webhook_send_feishu_card(self, webhook_url: str,template_id: str=None, template_version: str='1.0.0', template_variable: dict={}) -> ReturnResponse:
+    def webhook_send_feishu_card(
+        self,
+        webhook_url: str,
+        template_id: str = None,
+        template_version: str = '1.0.0',
+        template_variable: dict = None,
+    ) -> ReturnResponse:
         '''
         https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
         https://open.feishu.cn/document/feishu-cards/quick-start/send-message-cards-with-custom-bot
@@ -352,7 +345,10 @@ class MessageEndpoint(Endpoint):
             ReturnResponse: _description_
         '''
 
-        hearders = {
+        if template_variable is None:
+            template_variable = {}
+
+        headers = {
             "Content-type": "application/json",
             "charset":"utf-8"
         }
@@ -370,11 +366,13 @@ class MessageEndpoint(Endpoint):
                         }
                     }
             }
-        resp = requests.request(url=webhook_url, method='POST', json=payload, headers=hearders)
-        if resp.status_code == 200:
-            return ReturnResponse(code=0, msg=resp.text, data=resp.json())
-        else:
-            return ReturnResponse(code=1, msg=resp.text, data=resp.json())
+        return self.parent.request(
+            path=webhook_url,
+            method='POST',
+            body=payload,
+            headers=headers,
+            use_auth=False,
+        )
 
 
 class BitableEndpoint(Endpoint):
@@ -384,7 +382,17 @@ class BitableEndpoint(Endpoint):
 
     用于 Bitable Endpoint 相关能力的封装。
     """
-    def list_records(self, app_token, table_id, field_names: list=None, automatic_fields: bool=False, filter_conditions: list=None, conjunction: Literal['and', 'or']='and', sort_field_name: str=None, view_id: str=None):
+    def list_records(
+        self,
+        app_token,
+        table_id,
+        field_names: list = None,
+        automatic_fields: bool = False,
+        filter_conditions: list = None,
+        conjunction: Literal['and', 'or'] = 'and',
+        sort_field_name: str = None,
+        view_id: str = None,
+    ) -> ReturnResponse:
         '''
         如果是多维表格中的表格, 需要先获取 app_token
         https://open.feishu.cn/document/server-docs/docs/wiki-v2/space-node/get_node?appId=cli_a1ae749cd7f9100d
@@ -414,20 +422,28 @@ class BitableEndpoint(Endpoint):
                 }
             ]
             
-        records = self.parent.request(path=f'/bitable/v1/apps/{app_token}/tables/{table_id}/records/search', method='POST', body=payload)
-        if records.code == 0:
-            new_dict = {}
-            for item in records.data['items']:
-                for key, value in item['fields'].items():
-                    if isinstance(value, list):
-                        try:
-                            value = value[0].get('text')
-                        except AttributeError:
-                            pass
-                    new_dict[key] = value
-                yield new_dict
-        elif records.code != 0:
-            pass
+        records = self.parent.request(
+            path=f'/bitable/v1/apps/{app_token}/tables/{table_id}/records/search',
+            method='POST',
+            body=payload,
+        )
+        if records.code != 0:
+            return records
+
+        data = records.data if isinstance(records.data, dict) else {}
+        rows = data.get("items", [])
+        parsed_rows: list[dict[str, Any]] = []
+        for item in rows:
+            row: dict[str, Any] = {}
+            for key, value in item.get('fields', {}).items():
+                if isinstance(value, list):
+                    try:
+                        value = value[0].get('text')
+                    except AttributeError:
+                        pass
+                row[key] = value
+            parsed_rows.append(row)
+        return ReturnResponse(code=0, msg="查询记录成功", data=parsed_rows)
     
     def add_record(self, app_token, table_id, fields):
         """
@@ -500,9 +516,13 @@ class BitableEndpoint(Endpoint):
                                    method='POST',
                                    body=payload)
 
-    def query_record_id(self, 
-                        app_token: str=None, 
-                        table_id: str=None, filter_field_name: str=None, filter_value: str=None) -> str | None:
+    def query_record_id(
+        self,
+        app_token: str = None,
+        table_id: str = None,
+        filter_field_name: str = None,
+        filter_value: str = None,
+    ) -> ReturnResponse:
         '''
         用于单向或双向关联
 
@@ -531,13 +551,14 @@ class BitableEndpoint(Endpoint):
         res = self.parent.request(path=f'/bitable/v1/apps/{app_token}/tables/{table_id}/records/search',
                                    method='POST',
                                    body=payload)
-        if res.code == 0:
-            try:
-                return res.data['items'][0]['record_id']
-            except IndexError:
-                return None
-        else:
-            return None
+        if res.code != 0:
+            return ReturnResponse(code=res.code, msg="查询记录 ID 失败", data=res.data)
+
+        data = res.data if isinstance(res.data, dict) else {}
+        items = data.get("items", [])
+        if not items:
+            return ReturnResponse(code=0, msg="未找到记录", data={"record_id": None})
+        return ReturnResponse(code=0, msg="查询记录 ID 成功", data={"record_id": items[0].get("record_id")})
         
     def add_and_update_record(self, 
                               app_token: str=None, 
@@ -558,8 +579,13 @@ class BitableEndpoint(Endpoint):
         Returns:
             ReturnResponse: _description_
         '''
-        record_id = self.query_record_id(app_token, table_id, filter_field_name, filter_value)
-        
+        query_id_resp = self.query_record_id(app_token, table_id, filter_field_name, filter_value)
+        if query_id_resp.code != 0:
+            return query_id_resp
+
+        query_data = query_id_resp.data if isinstance(query_id_resp.data, dict) else {}
+        record_id = query_data.get("record_id")
+
         if record_id:
             payload = {
                 "fields": {k: v for k, v in fields.items() if v is not None}
@@ -572,7 +598,14 @@ class BitableEndpoint(Endpoint):
             resp = self.add_record(app_token, table_id, fields)
             return ReturnResponse(code=resp.code, msg=f"记录不存在, 进行创建", data=resp.data)
 
-    def query_name_by_record_id(self, app_token: str=None, table_id: str=None, field_names: list=None, record_id: str='', name: str=''):
+    def query_name_by_record_id(
+        self,
+        app_token: str = None,
+        table_id: str = None,
+        field_names: list = None,
+        record_id: str = '',
+        name: str = '',
+    ) -> ReturnResponse:
         """
         查询name by record id。
 
@@ -588,13 +621,13 @@ class BitableEndpoint(Endpoint):
         """
         response = self.query_record(app_token=app_token, table_id=table_id, field_names=field_names)
         if response.code == 0:
-            for item in response.data['items']:
+            data = response.data if isinstance(response.data, dict) else {}
+            for item in data.get('items', []):
                 if item['record_id'] == record_id:
-                    # print(item['fields'])
-                    return self.parent.extensions.parse_bitable_data(item['fields'], name)
-                # ss
-        else:
-            return None
+                    parsed = self.parent.extensions.parse_bitable_data(item['fields'], name)
+                    return ReturnResponse(code=0, msg="查询字段成功", data={"value": parsed})
+            return ReturnResponse.no_data(msg="未找到匹配记录")
+        return ReturnResponse(code=response.code, msg="查询字段失败", data=response.data)
 
 class DocsEndpoint(Endpoint):
 
@@ -622,7 +655,7 @@ class DocsEndpoint(Endpoint):
                                    method='POST',
                                    body=payload)
 
-    def create_doc(self, space_id: str, parent_node_token: str, title: str):
+    def create_doc(self, space_id: str, parent_node_token: str, title: str) -> ReturnResponse:
         '''
         在知识库中创建文档
 
@@ -641,13 +674,26 @@ class DocsEndpoint(Endpoint):
         res = self.parent.request(path=f'/wiki/v2/spaces/{space_id}/nodes',
                                    method='POST',
                                    body=payload)
-        if res.code == 0:
-            self.rename_doc_title(space_id=space_id, node_token=res.data['node']['node_token'], title=title)
-            return res
-        else:
+        if res.code != 0:
             return res
 
-    def create_block(self, document_id: str=None, block_id: str=None, client_token: str=None, payload: dict={}):
+        data = res.data if isinstance(res.data, dict) else {}
+        node = data.get("node", {})
+        node_token = node.get("node_token")
+        if not node_token:
+            return ReturnResponse(code=4001, msg="创建文档成功但缺少 node_token", data=res.data)
+        rename_resp = self.rename_doc_title(space_id=space_id, node_token=node_token, title=title)
+        if rename_resp.code != 0:
+            return rename_resp
+        return res
+
+    def create_block(
+        self,
+        document_id: str = None,
+        block_id: str = None,
+        client_token: str = None,
+        payload: dict = None,
+    ) -> ReturnResponse:
         '''
         _summary_
 
@@ -660,23 +706,39 @@ class DocsEndpoint(Endpoint):
         Returns:
             _type_: _description_
         '''
+        payload = payload or {}
+
+        children = payload.get('children')
+
         if payload.get('children_id'):
             # 创建嵌套块, 参考文档 
             # https://open.feishu.cn/api-explorer/cli_a1ae749cd7f9100d?apiName=create&from=op_doc_tab&project=docx&resource=document.block.descendant&version=v1
             return self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/descendant',
                                     method='POST',
                                     body=payload)
-        elif payload.get('children')[0]['block_type'] == 27:
+        elif isinstance(children, list) and children and children[0].get('block_type') == 27:
             
             r = self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/children',
                                     method='POST',
                                     body=payload)
-            block_id = r.data['children'][0]['block_id']          
+            data = r.data if isinstance(r.data, dict) else {}
+            children = data.get("children", [])
+            if not children:
+                return ReturnResponse(code=4001, msg="创建图片块失败：缺少 children", data=r.data)
+            block_id = children[0].get('block_id')
+            if not block_id:
+                return ReturnResponse(code=4001, msg="创建图片块失败：缺少 block_id", data=r.data)
             
-            file_token = self.parent.extensions.upload_media(
+            media_resp = self.parent.extensions.upload_media(
                 file_path=payload['file_path'],
                 block_id=block_id
-            )['data']['file_token']
+            )
+            if media_resp.code != 0:
+                return media_resp
+            media_data = media_resp.data if isinstance(media_resp.data, dict) else {}
+            file_token = media_data.get("file_token")
+            if not file_token:
+                return ReturnResponse(code=4001, msg="上传媒体成功但缺少 file_token", data=media_resp.data)
             
             res = self.update_block(
                 document_id=document_id,
@@ -687,9 +749,7 @@ class DocsEndpoint(Endpoint):
                 image_align=payload['image_align']
             )
             return res
-            # print(payload)
         else:
-            # print(payload)
             return self.parent.request(path=f'/docx/v1/documents/{document_id}/blocks/{block_id}/children',
                                     method='POST',
                                     body=payload)
@@ -795,7 +855,7 @@ class ExtensionsEndpoint(Endpoint):
             raise ValueError('No such named receive_id')
         return receive_id_type
 
-    def upload_file(self, file_name, file_path):
+    def upload_file(self, file_name: str, file_path: str) -> ReturnResponse:
 
         """
         上传file。
@@ -807,17 +867,29 @@ class ExtensionsEndpoint(Endpoint):
         Returns:
             Any: 返回值。
         """
-        files = {
-            'file_type': ('', 'stream'),
-            'file_name': ('', file_name),
-            'file': open(file_path, 'rb')
-        }
+        with open(file_path, 'rb') as file_obj:
+            files = {
+                'file': (file_name, file_obj, 'application/octet-stream'),
+            }
+            form_data = {
+                'file_type': 'stream',
+                'file_name': file_name,
+            }
+            response = self.parent.request(
+                path='/im/v1/files',
+                method='POST',
+                files=files,
+                data=form_data,
+            )
+        if response.code != 0:
+            return response
+        payload = response.data if isinstance(response.data, dict) else {}
+        file_key = payload.get('file_key')
+        if not file_key:
+            return ReturnResponse(code=4001, msg='上传文件成功但未返回 file_key', data=response.data)
+        return ReturnResponse(code=0, msg='上传文件成功', data={'file_key': file_key})
 
-        return self.parent.request(path='/im/v1/files',
-                                   method='POST',
-                                   files=files).data['file_key']
-
-    def upload_image(self, image_path):
+    def upload_image(self, image_path: str) -> ReturnResponse:
         """
         上传image。
 
@@ -827,30 +899,27 @@ class ExtensionsEndpoint(Endpoint):
         Returns:
             Any: 返回值。
         """
-        import requests
-        from requests_toolbelt import MultipartEncoder
-        
-        url = "https://open.feishu.cn/open-apis/im/v1/images"
-            
-        form = {
+        with open(image_path, 'rb') as file_obj:
+            files = {
+                'image': ('image', file_obj, 'application/octet-stream'),
+            }
+            form_data = {
                 'image_type': 'message',
-                'image': (open(image_path, 'rb'))
-            }  # 需要替换具体的path 
-        
-        multi_form = MultipartEncoder(form)
-        if self.parent.auth.fetch_token_from_file():
-            token = self.parent.auth.fetch_token_from_file()
-        else:
-            self.parent.auth.save_token_to_file()
-            token = self.parent.auth.fetch_token_from_file()
-        headers = {
-            'Authorization': f'Bearer {token}',  ## 获取tenant_access_token, 需要替换为实际的token
-        }
-        headers['Content-Type'] = multi_form.content_type
-        response = requests.request("POST", url, headers=headers, data=multi_form)
-        response_json = response.json()
-        if response_json['code'] == 0:
-            return response_json['data']['image_key']
+            }
+            response = self.parent.request(
+                path='/im/v1/images',
+                method='POST',
+                files=files,
+                data=form_data,
+            )
+
+        if response.code != 0:
+            return response
+        payload = response.data if isinstance(response.data, dict) else {}
+        image_key = payload.get('image_key')
+        if not image_key:
+            return ReturnResponse(code=4001, msg='上传图片成功但未返回 image_key', data=response.data)
+        return ReturnResponse(code=0, msg='上传图片成功', data={'image_key': image_key})
     
     
     def build_block_heading(self, content, heading_level: Literal[1, 2, 3, 4]):
@@ -1064,8 +1133,6 @@ class ExtensionsEndpoint(Endpoint):
         #     # 在data列表末尾添加一条新数据
         #     data.append(['sss'] * columns)  # 添加一个空行
         
-        # print(data)
-        
         # 生成单元格ID和块
         for row in range(rows):
             row_cells = []
@@ -1135,7 +1202,6 @@ class ExtensionsEndpoint(Endpoint):
             "children_id": [table_id],
             "descendants": [table_block] + cell_blocks
         }
-        # print(result)
         return result
 
     def build_bitable_text(self, text: str=None):
@@ -1183,7 +1249,7 @@ class ExtensionsEndpoint(Endpoint):
             "image_align": image_align
         }
 
-    def upload_media(self, file_path: str, block_id: str):
+    def upload_media(self, file_path: str, block_id: str) -> ReturnResponse:
         """
         上传media。
 
@@ -1195,21 +1261,31 @@ class ExtensionsEndpoint(Endpoint):
             Any: 返回值。
         """
         file_size = os.path.getsize(file_path)
-        url = "https://open.feishu.cn/open-apis/drive/v1/medias/upload_all"
-        form = {'file_name': 'demo.jpeg',
+        with open(file_path, 'rb') as file_obj:
+            files = {
+                'file': (os.path.basename(file_path), file_obj, 'application/octet-stream'),
+            }
+            form_data = {
+                'file_name': os.path.basename(file_path),
                 'parent_type': 'docx_image',
                 'parent_node': block_id,
                 'size': str(file_size),
-                'file': (open(file_path, 'rb'))}  
-        multi_form = MultipartEncoder(form)
-        headers = {
-            'Authorization': f'Bearer {self.parent.auth.fetch_token_from_file()}',  ## 获取tenant_access_token, 需要替换为实际的token
-        }
-        headers['Content-Type'] = multi_form.content_type
-        response = requests.request("POST", url, headers=headers, data=multi_form)
-        return response.json()
+            }
+            response = self.parent.request(
+                path='/drive/v1/medias/upload_all',
+                method='POST',
+                files=files,
+                data=form_data,
+            )
+        if response.code != 0:
+            return response
+        payload = response.data if isinstance(response.data, dict) else {}
+        file_token = payload.get('file_token')
+        if not file_token:
+            return ReturnResponse(code=4001, msg='上传媒体成功但未返回 file_token', data=response.data)
+        return ReturnResponse(code=0, msg='上传媒体成功', data={'file_token': file_token})
     
-    def create_block(self, blocks, document_id):
+    def create_block(self, blocks: list, document_id: str) -> ReturnResponse:
             # 交换blocks中元素的顺序
         """
         创建block。
@@ -1227,23 +1303,40 @@ class ExtensionsEndpoint(Endpoint):
             time.sleep(1)
             try:
                 if block['children'][0]['block_type'] != 27:
-                    self.parent.docs.create_block(
+                    create_resp = self.parent.docs.create_block(
                         document_id=document_id,
                         block_id=document_id,
                         payload=block
                     )
+                    if create_resp.code != 0:
+                        return create_resp
                         
                 elif block['children'][0]['block_type'] == 27:
-                    block_id = self.parent.docs.create_block(
+                    create_resp = self.parent.docs.create_block(
                         document_id=document_id,
                         block_id=document_id,
                         payload=block
-                    ).data['children'][0]['block_id']
+                    )
+                    if create_resp.code != 0:
+                        return create_resp
+                    create_data = create_resp.data if isinstance(create_resp.data, dict) else {}
+                    children = create_data.get('children', [])
+                    if not children:
+                        return ReturnResponse(code=4001, msg='创建图片块失败：缺少 children', data=create_resp.data)
+                    block_id = children[0].get('block_id')
+                    if not block_id:
+                        return ReturnResponse(code=4001, msg='创建图片块失败：缺少 block_id', data=create_resp.data)
                     
-                    file_token = self.upload_media(
+                    media_resp = self.upload_media(
                         file_path=block['file_path'],
                         block_id=block_id
-                    )['data']['file_token']
+                    )
+                    if media_resp.code != 0:
+                        return media_resp
+                    media_data = media_resp.data if isinstance(media_resp.data, dict) else {}
+                    file_token = media_data.get('file_token')
+                    if not file_token:
+                        return ReturnResponse(code=4001, msg='上传媒体成功但缺少 file_token', data=media_resp.data)
                     
                     res = self.parent.docs.update_block(
                         document_id=document_id,
@@ -1262,7 +1355,8 @@ class ExtensionsEndpoint(Endpoint):
                 )
                 return res
             except IndexError:
-                print(block)
+                return ReturnResponse(code=4001, msg="无效 block 结构", data={"block": block})
+        return ReturnResponse(code=0, msg="区块处理完成", data={})
     
     def parse_bitable_data(self, fields, name):
         """
@@ -1327,6 +1421,7 @@ class ExtensionsEndpoint(Endpoint):
         payload = {
             "include_resigned": True,
         }
+        user_input = email or mobile or ""
         if email:
             payload['emails'] = [email]
             user_input = email
@@ -1338,11 +1433,18 @@ class ExtensionsEndpoint(Endpoint):
         response = self.parent.request(path='/contact/v3/users/batch_get_id',
                                    method='POST',
                                    body=payload)
-        if response.code == 0:
-            if get == 'open_id':
-                return ReturnResponse(code=0, msg=f'根据用户输入的 {user_input}, 获取用户信息成功', data=response.data['user_list'][0]['user_id'])
-        else:
+        if response.code != 0:
             return ReturnResponse(code=response.code, msg=f"获取时失败, 报错请见 data 字段", data=response.data)
+
+        response_data = response.data if isinstance(response.data, dict) else {}
+        user_list = response_data.get("user_list", [])
+        if not user_list:
+            return ReturnResponse.no_data(msg=f'根据用户输入的 {user_input}, 未找到用户')
+
+        if get == 'open_id':
+            user_id = user_list[0].get('user_id')
+            return ReturnResponse(code=0, msg=f'根据用户输入的 {user_input}, 获取用户 open_id 成功', data={"user_id": user_id})
+        return ReturnResponse(code=0, msg=f'根据用户输入的 {user_input}, 获取用户信息成功', data=response_data)
     
     def format_rich_text(self, text: str, color: Literal['red', 'green', 'yellow', 'blue'], bold: bool=False):
         """
@@ -1422,14 +1524,15 @@ class ExtensionsEndpoint(Endpoint):
         walk(elements)
         return ''.join(texts)
    
-    def send_message_notify(self, 
-                            receive_id: str='ou_ca3fc788570865cbbf59bfff43621a78', 
-                            color: Literal['red', 'green', 'blue']='red', 
-                            title: str='Test',
-                            sub_title: str='未填写子标题',
-                            priority: str='P0',
-                            content: str='Test'
-                        ):
+    def send_message_notify(
+        self,
+        receive_id: str='ou_ca3fc788570865cbbf59bfff43621a78',
+        color: Literal['red', 'green', 'blue']='red',
+        title: str='Test',
+        sub_title: str='未填写子标题',
+        priority: str='P0',
+        content: str='Test',
+    ) -> ReturnResponse:
         """
         发送message notify。
 
@@ -1456,7 +1559,7 @@ class ExtensionsEndpoint(Endpoint):
             receive_id=receive_id
         )
     
-    def get_user_info_by_open_id(self, open_id: str, get: Literal['name', 'all']='all'):
+    def get_user_info_by_open_id(self, open_id: str, get: Literal['name', 'all']='all') -> ReturnResponse:
         """
         获取user info by open id。
 
@@ -1469,27 +1572,28 @@ class ExtensionsEndpoint(Endpoint):
         """
         response = self.parent.request(path=f'/contact/v3/users/{open_id}?department_id_type=open_department_id&user_id_type=open_id',
                                    method='GET')
-        if response.code == 0:
-            if get == 'name':
-                return response.data['user']['name']
-            else:
-                return response.data
-        else:
-            return None
+        if response.code != 0:
+            return ReturnResponse(code=response.code, msg="查询用户失败", data=response.data)
+        payload = response.data if isinstance(response.data, dict) else {}
+        user = payload.get("user", {})
+        if get == 'name':
+            return ReturnResponse(code=0, msg="查询用户名成功", data={"name": user.get("name")})
+        return ReturnResponse(code=0, msg="查询用户成功", data=payload)
     
-    def send_alert_notify(self,
-                          event_content: str=None,
-                          event_name: str=None,
-                          entity_name: str=None,
-                          event_time: str=None,
-                          resolved_time: str='',
-                          event_description: str=None,
-                          actions: str=None,
-                          history: str=None,
-                          color: Literal['red', 'green', 'blue']='red',
-                          priority: Literal['P0', 'P1', 'P2', 'P3', 'P4']='P2',
-                          receive_id: str=None
-                        ):
+    def send_alert_notify(
+        self,
+        event_content: str=None,
+        event_name: str=None,
+        entity_name: str=None,
+        event_time: str=None,
+        resolved_time: str='',
+        event_description: str=None,
+        actions: str=None,
+        history: str=None,
+        color: Literal['red', 'green', 'blue']='red',
+        priority: Literal['P0', 'P1', 'P2', 'P3', 'P4']='P2',
+        receive_id: str=None,
+    ) -> ReturnResponse:
         """
         发送alert notify。
 
@@ -1524,7 +1628,6 @@ class ExtensionsEndpoint(Endpoint):
         # 移除 value 为 None 的键
         template_variable = {k: v for k, v in template_variable.items() if v is not None}
         
-        print(template_variable)
         return self.parent.message.send_card(
             template_id="AAqXPIkIOW0g9",
             template_variable=template_variable,

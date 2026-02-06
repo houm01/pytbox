@@ -1,0 +1,4 @@
+interface:
+  display_name: "Spec ADR Rollup"
+  short_description: "Merge spec docs into one ADR markdown"
+  default_prompt: "Use $spec-adr-rollup to merge docs/specs/<name> into docs/adr/<name>.md with status and date for each source file."
