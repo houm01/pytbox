@@ -1,612 +1,838 @@
 #!/usr/bin/env python3
 
+"""NetBox client with unified ReturnResponse contract."""
+
+from __future__ import annotations
+
+import logging
 import time
-import json
+import uuid
+from typing import Any, Dict, List, Literal, Optional
+
 import pynetbox
-from typing import Literal, Dict, Any
-
 import requests
-from pypinyin import pinyin, lazy_pinyin
+from pypinyin import lazy_pinyin
+from requests import Response
+from requests.exceptions import RequestException, Timeout
 
-from ..utils.response import ReturnResponse
+from ..schemas.response import ReturnResponse
 from ..utils.parse import Parse
 
 
-
 class NetboxClient:
-    """
-    NetboxClient 类。
+    """Client wrapper for NetBox REST APIs.
 
-    用于 Netbox Client 相关能力的封装。
+    This client keeps public method names stable while unifying all external IO
+    methods to the ``ReturnResponse`` contract.
     """
-    def __init__(self, url: str=None, token: str=None, timeout: int=10):
-        """
-        初始化对象。
+
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        token: Optional[str] = None,
+        timeout: int = 10,
+        max_retries: int = 3,
+        retry_backoff_base: float = 0.5,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        """Initialize a NetBox client.
 
         Args:
-            url: url 参数。
-            token: token 参数。
-            timeout: timeout 参数。
+            url: NetBox base URL.
+            token: NetBox API token.
+            timeout: HTTP timeout in seconds.
+            max_retries: Maximum retry count, capped at 3.
+            retry_backoff_base: Base seconds for exponential backoff.
+            logger: Optional logger instance.
         """
-        self.url = url
-        self.token = token
-        self.headers = {
-            'Authorization': f'Token {self.token}',
-            'Content-Type': 'application/json',
-        }
+        self.url = (url or "").rstrip("/")
+        self.token = token or ""
         self.timeout = timeout
-        self.pynetbox = pynetbox.api(self.url, token=self.token)
-
-    def get_update_comments(self, source: str=''):
-        """
-        获取update comments。
-
-        Args:
-            source: source 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        return f"""Updated by automation script\nDate: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}\nSource: {source}"""
-
-    def get_org_sites_regions(self) -> Dict[str, Any]:
-        """
-        获取org sites regions。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = "/api/dcim/regions/"
-        r = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        return r.json()
-
-    def get_region_id(self, name):
-        """
-        获取region id。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = "/api/dcim/regions/"
-        params = {
-            "name": name
+        self.max_retries = min(max(max_retries, 1), 3)
+        self.retry_backoff_base = retry_backoff_base
+        self.logger = logger or logging.getLogger(__name__)
+        self.headers = {
+            "Authorization": f"Token {self.token}",
+            "Content-Type": "application/json",
         }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if name is None:
-            return None
-        if response.json()['count'] > 1:
-            raise ValueError(f"region {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
+        self.pynetbox = pynetbox.api(self.url, token=self.token) if self.url else None
 
-    def add_or_update_region(self, name, slug=None):
-        '''
-        _summary_
-
-        Returns:
-            _type_: _description_
-        '''
-        api_url = "/api/dcim/regions/"
-        
-        if slug is None:
-            slug = self._process_slug(name)
-
-        data = {
-            "name": name,
-            "slug": slug,
-            
-        }
-        region_id = self.get_region_id(name=name)
-        if region_id:
-            update_response = requests.put(url=self.url + api_url + f"{region_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
-
-    def get_dcim_site_id(self, name):
-        """
-        获取dcim site id。
+    def _ok(self, msg: str, data: Any = None) -> ReturnResponse:
+        """Build a success response.
 
         Args:
-            name: name 参数。
+            msg: Message text.
+            data: Optional payload.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Standard success response.
         """
-        api_url = "/api/dcim/sites"
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for site in response.json()['results']:
-            if site['name'] == name:
-                return site['id']
-        return None
-    
-    def add_or_update_org_sites_sites(self, 
-                      name, 
-                      slug=None, 
-                      status: Literal['planned', 'staging', 'active', 'decommissioning', 'retired']='active',
-                      address: str='',
-                      region: str=None,
-                      tenant: str=None,
-                      facility: str=None,
-                      latitude: float=None,
-                      longitude: float=None,
-                      time_zone: str='Asia/Shanghai',
-                      tags: dict=None
-                    )-> ReturnResponse:
-        '''
-        _summary_
+        return ReturnResponse(code=0, msg=msg, data=data)
 
-        Returns:
-            _type_: _description_
-        '''
-        api_url = "/api/dcim/sites/"
-        
-        if slug:
-            slug = self._process_slug(slug)
-        data = {
-            "name": name,
-            "slug": slug,
-            "status": status,
-            "facility": str(facility),
-            "region": self.get_region_id(region),
-            "tenant": self.get_tenant_id(tenant),
-            "tags": [tags],
-            # "group": 0,
-            "time_zone": time_zone,
-            # "description": "string",
-            "physical_address": address,
-            # "shipping_address": "string",
-            "latitude": round(float(latitude), 2) if latitude is not None else None,
-            "longitude": round(float(longitude), 2) if longitude is not None else None,
-        }
-        data = Parse.remove_dict_none_value(data)
-        site_id = self.get_site_id(name=name)
-        if site_id:
-            update_response = requests.put(url=self.url + api_url + f"{site_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{name} 创建成功!", data=create_response.json())
-    
-    def get_dcim_location_id(self, name):
-        """
-        获取dcim location id。
+    def _fail(self, msg: str, data: Any = None, code: int = 1) -> ReturnResponse:
+        """Build a failure response.
 
         Args:
-            name: name 参数。
+            msg: Error message text.
+            data: Optional failure payload.
+            code: Business error code.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Standard failure response.
         """
-        api_url = "/api/dcim/locations"
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for location in response.json()['results']:
-            if location['name'] == name:
-                return location['id']
-        return None
-    
-    def add_or_update_dcim_location(self, name, slug=None, site_name=None, status: Literal['planned', 'staging', 'active', 'decommissioning', 'retired']='active', parent_name=None):
-        """
-        新增or update dcim location。
+        return ReturnResponse(code=code, msg=msg, data=data)
+
+    def _join_url(self, api_url: str) -> str:
+        """Resolve API URL to an absolute URL.
 
         Args:
-            name: name 参数。
-            slug: slug 参数。
-            site_name: site_name 参数。
-            status: status 参数。
-            parent_name: parent_name 参数。
+            api_url: Relative path or absolute URL.
 
         Returns:
-            Any: 返回值。
+            str: Absolute URL.
         """
-        if slug is None:
-            slug = Common.get_pinyin_initials(name)
-            self.log.info(f"用户未输入 slug, 已转换为 {slug}")
-            
-        api_url = "/api/dcim/locations"
-        data = {
-            "name": name,
-            "slug": slug,
-            "site": self.get_dcim_site_id(name=site_name),
-            "parent": self.get_dcim_location_id(name=parent_name),
-            "status": status,
-            # "tenant": 0,
-            # "facility": "string",
-            # "description": "string",
-        }
-        location_id = self.get_dcim_location_id(name=name)
-        if location_id:
-            update_response = requests.put(url=self.url + api_url + f"{location_id}/", headers=self.headers, json=data, timeout=self.timeout)
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
+        if api_url.startswith("http://") or api_url.startswith("https://"):
+            return api_url
+        if not api_url.startswith("/"):
+            api_url = f"/{api_url}"
+        return f"{self.url}{api_url}"
 
+    def _safe_json(self, response: Response) -> Any:
+        """Parse response JSON safely.
+
+        Args:
+            response: HTTP response.
+
+        Returns:
+            Any: Parsed JSON payload or a text wrapper dict.
+        """
         try:
-            return ReturnResponse(code=0, message=f"{name} 已存在, 更新成功!", data=update_response.json())
-        except UnboundLocalError:
-            return ReturnResponse(code=0, message=f"{name} 创建成功!", data=create_response.json())
+            return response.json()
+        except ValueError:
+            return {"text": response.text}
 
-    def get_ipam_ipaddress_id(self, address):
-        """
-        获取ipam ipaddress id。
+    def _is_retryable_status(self, status_code: int) -> bool:
+        """Check whether an HTTP status code is retryable.
 
         Args:
-            address: address 参数。
+            status_code: HTTP status code.
 
         Returns:
-            Any: 返回值。
+            bool: Whether retry should be attempted.
         """
-        api_url = "/api/ipam/ip-addresses/"
-        params = {
-            "address": address
+        return status_code == 429 or status_code >= 500
+
+    def _log_step(self, task_id: str, target: str, result: str, start_ts: float) -> None:
+        """Emit key-step logs for external calls.
+
+        Args:
+            task_id: Correlation identifier.
+            target: Request target.
+            result: Execution result.
+            start_ts: Monotonic start timestamp.
+        """
+        duration_ms = int((time.monotonic() - start_ts) * 1000)
+        self.logger.info(
+            "task_id=%s target=%s result=%s duration_ms=%s",
+            task_id,
+            target,
+            result,
+            duration_ms,
+        )
+
+    def _request_with_retry(
+        self,
+        method: str,
+        api_url: str,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Any = None,
+        data: Any = None,
+    ) -> ReturnResponse:
+        """Send an HTTP request with timeout and retry.
+
+        Args:
+            method: HTTP method.
+            api_url: Relative path or absolute URL.
+            params: Optional query params.
+            json_data: Optional JSON payload.
+            data: Optional raw body payload.
+
+        Returns:
+            ReturnResponse: Wrapped HTTP result.
+        """
+        if not self.url and not api_url.startswith("http"):
+            return self._fail("netbox url is not configured")
+
+        full_url = self._join_url(api_url)
+        method_upper = method.upper()
+
+        for attempt in range(1, self.max_retries + 1):
+            task_id = uuid.uuid4().hex[:8]
+            start_ts = time.monotonic()
+            try:
+                response = requests.request(
+                    method=method_upper,
+                    url=full_url,
+                    headers=self.headers,
+                    params=params,
+                    json=json_data,
+                    data=data,
+                    timeout=self.timeout,
+                )
+                payload = self._safe_json(response)
+
+                if 200 <= response.status_code < 300:
+                    self._log_step(task_id, api_url, "ok", start_ts)
+                    return self._ok(
+                        msg=f"{method_upper} {api_url} success",
+                        data=payload,
+                    )
+
+                should_retry = (
+                    self._is_retryable_status(response.status_code)
+                    and attempt < self.max_retries
+                )
+                self._log_step(task_id, api_url, "retry" if should_retry else "fail", start_ts)
+
+                if should_retry:
+                    time.sleep(self.retry_backoff_base * (2 ** (attempt - 1)))
+                    continue
+
+                return self._fail(
+                    msg=f"{method_upper} {api_url} failed",
+                    data={
+                        "http_status": response.status_code,
+                        "err": payload,
+                        "attempt": attempt,
+                    },
+                )
+            except (Timeout, RequestException) as exc:
+                should_retry = attempt < self.max_retries
+                self._log_step(task_id, api_url, "retry" if should_retry else "fail", start_ts)
+                if should_retry:
+                    time.sleep(self.retry_backoff_base * (2 ** (attempt - 1)))
+                    continue
+                return self._fail(
+                    msg=f"{method_upper} {api_url} exception",
+                    data={"err": str(exc), "attempt": attempt},
+                )
+
+        return self._fail(msg=f"{method_upper} {api_url} exhausted retries")
+
+    def _extract_results(self, payload: Any) -> List[Dict[str, Any]]:
+        """Extract ``results`` list from a paginated payload.
+
+        Args:
+            payload: JSON payload.
+
+        Returns:
+            list[dict[str, Any]]: Results list.
+        """
+        if isinstance(payload, dict):
+            results = payload.get("results")
+            if isinstance(results, list):
+                return [item for item in results if isinstance(item, dict)]
+        return []
+
+    def _extract_count(self, payload: Any, results: List[Dict[str, Any]]) -> int:
+        """Extract the count from payload.
+
+        Args:
+            payload: JSON payload.
+            results: Parsed results list.
+
+        Returns:
+            int: Result count.
+        """
+        if isinstance(payload, dict) and isinstance(payload.get("count"), int):
+            return payload["count"]
+        return len(results)
+
+    def _query_single_id(
+        self,
+        api_url: str,
+        params: Dict[str, Any],
+        resource_name: str,
+    ) -> ReturnResponse:
+        """Query a single object ID by filters.
+
+        Args:
+            api_url: API endpoint path.
+            params: Query filters.
+            resource_name: Resource name for messages.
+
+        Returns:
+            ReturnResponse: ``data`` contains object ID or ``None``.
+        """
+        cleaned_params = Parse.remove_dict_none_value(params)
+        if not cleaned_params:
+            return self._ok(msg=f"{resource_name} not found", data=None)
+
+        response = self._request_with_retry("GET", api_url, params=cleaned_params)
+        if response.code != 0:
+            return response
+
+        results = self._extract_results(response.data)
+        count = self._extract_count(response.data, results)
+        if count > 1:
+            return self._fail(
+                msg=f"{resource_name} has multiple results",
+                data={"params": cleaned_params, "count": count},
+            )
+        if count == 0:
+            return self._ok(msg=f"{resource_name} not found", data=None)
+        return self._ok(msg=f"{resource_name} found", data=results[0].get("id"))
+
+    def _upsert_resource(
+        self,
+        api_url: str,
+        resource_id: Optional[Any],
+        payload: Dict[str, Any],
+        resource_name: str,
+        resource_key: str,
+    ) -> ReturnResponse:
+        """Create or update a NetBox resource.
+
+        Args:
+            api_url: API endpoint path.
+            resource_id: Existing resource ID.
+            payload: Request payload.
+            resource_name: Resource label.
+            resource_key: Resource key text for logs/messages.
+
+        Returns:
+            ReturnResponse: Upsert execution result.
+        """
+        method = "PUT" if resource_id else "POST"
+        target_api = f"{api_url}{resource_id}/" if resource_id else api_url
+        action = "updated" if resource_id else "created"
+
+        response = self._request_with_retry(method, target_api, json_data=payload)
+        if response.code != 0:
+            return self._fail(
+                msg=f"{resource_name} [{resource_key}] {action} failed",
+                data=response.data,
+            )
+        return self._ok(
+            msg=f"{resource_name} [{resource_key}] {action} successfully",
+            data=response.data,
+        )
+
+    def get_update_comments(self, source: str = "") -> str:
+        """Generate update comment text.
+
+        Args:
+            source: Source marker.
+
+        Returns:
+            str: Formatted comment text.
+        """
+        return (
+            "Updated by automation script\n"
+            f"Date: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}\n"
+            f"Source: {source}"
+        )
+
+    def get_org_sites_regions(self) -> ReturnResponse:
+        """Get NetBox regions list.
+
+        Returns:
+            ReturnResponse: Regions payload.
+        """
+        response = self._request_with_retry("GET", "/api/dcim/regions/")
+        if response.code != 0:
+            return response
+        return self._ok(msg="regions fetched", data=response.data)
+
+    def get_region_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get region ID by name.
+
+        Args:
+            name: Region name.
+
+        Returns:
+            ReturnResponse: Region ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/regions/",
+            {"name": name},
+            "region",
+        )
+
+    def add_or_update_region(self, name: str, slug: Optional[str] = None) -> ReturnResponse:
+        """Create or update a region.
+
+        Args:
+            name: Region name.
+            slug: Optional region slug.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        resolved_slug = self._process_slug(name if slug is None else slug)
+        payload = Parse.remove_dict_none_value({"name": name, "slug": resolved_slug})
+        region_id_response = self.get_region_id(name=name)
+        if region_id_response.code != 0:
+            return region_id_response
+
+        return self._upsert_resource(
+            "/api/dcim/regions/",
+            region_id_response.data,
+            payload,
+            "region",
+            name,
+        )
+
+    def get_dcim_site_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get site ID by name.
+
+        Args:
+            name: Site name.
+
+        Returns:
+            ReturnResponse: Site ID in ``data``.
+        """
+        return self.get_site_id(name=name)
+
+    def add_or_update_org_sites_sites(
+        self,
+        name: str,
+        slug: Optional[str] = None,
+        status: Literal["planned", "staging", "active", "decommissioning", "retired"] = "active",
+        address: str = "",
+        region: Optional[str] = None,
+        tenant: Optional[str] = None,
+        facility: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        time_zone: str = "Asia/Shanghai",
+        tags: Optional[dict] = None,
+    ) -> ReturnResponse:
+        """Create or update a site with extended fields.
+
+        Args:
+            name: Site name.
+            slug: Site slug.
+            status: Site status.
+            address: Physical address.
+            region: Region name.
+            tenant: Tenant name.
+            facility: Facility value.
+            latitude: Latitude value.
+            longitude: Longitude value.
+            time_zone: Timezone name.
+            tags: Optional tag dict.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        region_id_response = self.get_region_id(region)
+        if region_id_response.code != 0:
+            return region_id_response
+
+        tenant_id_response = self.get_tenant_id(tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        site_id_response = self.get_site_id(name=name)
+        if site_id_response.code != 0:
+            return site_id_response
+
+        resolved_slug = self._process_slug(name if slug is None else slug)
+        payload = {
+            "name": name,
+            "slug": resolved_slug,
+            "status": status,
+            "facility": str(facility) if facility is not None else None,
+            "region": region_id_response.data,
+            "tenant": tenant_id_response.data,
+            "tags": [tags] if tags is not None else None,
+            "time_zone": time_zone,
+            "physical_address": address,
+            "latitude": self._process_gps(latitude),
+            "longitude": self._process_gps(longitude),
         }
-        r = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if address is None:
-            return None
-        elif r.json()['count'] > 1:
-            raise ValueError(f"address {address} 存在多个结果")
-        elif r.json()['count'] == 0:
-            return None
-        else:
-            return r.json()['results'][0]['id']
+        payload = Parse.remove_dict_none_value(payload)
 
-    def get_tenants_id(self, name):
-        """
-        获取tenants id。
+        return self._upsert_resource(
+            "/api/dcim/sites/",
+            site_id_response.data,
+            payload,
+            "site",
+            name,
+        )
 
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = "/api/tenancy/tenants"
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"tenant {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-
-    def assign_ipaddress_to_interface(self, address: str, device: str, interface_name: str) -> ReturnResponse:
-        """
-        执行 assign ipaddress to interface 相关逻辑。
+    def get_dcim_location_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get location ID by name.
 
         Args:
-            address: address 参数。
-            device: device 参数。
-            interface_name: interface_name 参数。
+            name: Location name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Location ID in ``data``.
         """
-        api_url = "/api/ipam/ip-addresses/"
-        data = {
+        return self._query_single_id(
+            "/api/dcim/locations/",
+            {"name": name},
+            "location",
+        )
+
+    def add_or_update_dcim_location(
+        self,
+        name: str,
+        slug: Optional[str] = None,
+        site_name: Optional[str] = None,
+        status: Literal["planned", "staging", "active", "decommissioning", "retired"] = "active",
+        parent_name: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a dcim location.
+
+        Args:
+            name: Location name.
+            slug: Location slug.
+            site_name: Parent site name.
+            status: Location status.
+            parent_name: Parent location name.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        resolved_slug = self._process_slug(name if slug is None else slug)
+
+        site_id_response = self.get_dcim_site_id(name=site_name)
+        if site_id_response.code != 0:
+            return site_id_response
+
+        parent_id_response = self.get_dcim_location_id(name=parent_name)
+        if parent_id_response.code != 0:
+            return parent_id_response
+
+        location_id_response = self.get_dcim_location_id(name=name)
+        if location_id_response.code != 0:
+            return location_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "name": name,
+                "slug": resolved_slug,
+                "site": site_id_response.data,
+                "parent": parent_id_response.data,
+                "status": status,
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/dcim/locations/",
+            location_id_response.data,
+            payload,
+            "location",
+            name,
+        )
+
+    def get_ipam_ipaddress_id(self, address: Optional[str]) -> ReturnResponse:
+        """Get IP address ID by address.
+
+        Args:
+            address: IP address string.
+
+        Returns:
+            ReturnResponse: IP address ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/ipam/ip-addresses/",
+            {"address": address},
+            "ip-address",
+        )
+
+    def get_tenants_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get tenant ID by name.
+
+        Args:
+            name: Tenant name.
+
+        Returns:
+            ReturnResponse: Tenant ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/tenancy/tenants/",
+            {"name": name},
+            "tenant",
+        )
+
+    def assign_ipaddress_to_interface(
+        self,
+        address: str,
+        device: str,
+        interface_name: str,
+    ) -> ReturnResponse:
+        """Assign an IP address to an interface.
+
+        Args:
+            address: IP address.
+            device: Device name.
+            interface_name: Interface name.
+
+        Returns:
+            ReturnResponse: Assignment result.
+        """
+        interface_id_response = self.get_interface_id(device=device, name=interface_name)
+        if interface_id_response.code != 0:
+            return interface_id_response
+
+        ip_id_response = self.get_ipam_ipaddress_id(address=address)
+        if ip_id_response.code != 0:
+            return ip_id_response
+        if ip_id_response.data is None:
+            return self._fail(msg=f"ip-address [{address}] not found")
+
+        payload = {
             "address": address,
             "assigned_object_type": "dcim.interface",
-            "assigned_object_id": self.get_interface_id(device=device, name=interface_name),
+            "assigned_object_id": interface_id_response.data,
         }
-        ipaddress_id = self.get_ipam_ipaddress_id(address=address)
-        response = requests.put(url=self.url + api_url + f"{ipaddress_id}/", headers=self.headers, json=data, timeout=self.timeout)
-        if response.status_code > 210:
-            return ReturnResponse(code=1, msg=f"{address} 分配失败! {response.json()}", data=response.json())
-        else:
-            return ReturnResponse(code=0, msg=f"{address} 分配成功!", data=response.json())
 
-    def add_or_update_ipam_ipaddress(self, 
-                                     address, 
-                                     status: Literal['active', 'reserved', 'deprecated', 'dhcp', 'slaac']='active',
-                                     tenant: str=None,
-                                     ip_type: Literal['BGP', '电信', '联通', '移动', 'Other']=None,
-                                     description: str=None,
-                                     assigned_object_type: Literal['dcim.interface']=None,
-                                     assigned_object_id: int=None
-                                    ):
+        response = self._request_with_retry(
+            "PUT",
+            f"/api/ipam/ip-addresses/{ip_id_response.data}/",
+            json_data=payload,
+        )
+        if response.code != 0:
+            return self._fail(msg=f"ip-address [{address}] assign failed", data=response.data)
+        return self._ok(msg=f"ip-address [{address}] assigned", data=response.data)
 
-        """
-        新增or update ipam ipaddress。
+    def add_or_update_ipam_ipaddress(
+        self,
+        address: str,
+        status: Literal["active", "reserved", "deprecated", "dhcp", "slaac"] = "active",
+        tenant: Optional[str] = None,
+        ip_type: Optional[Literal["BGP", "电信", "联通", "移动", "Other"]] = None,
+        description: Optional[str] = None,
+        assigned_object_type: Optional[Literal["dcim.interface"]] = None,
+        assigned_object_id: Optional[int] = None,
+    ) -> ReturnResponse:
+        """Create or update an IP address.
 
         Args:
-            address: address 参数。
-            status: status 参数。
-            tenant: tenant 参数。
-            ip_type: ip_type 参数。
-            description: description 参数。
-            assigned_object_type: assigned_object_type 参数。
-            assigned_object_id: 资源 ID。
+            address: IP address.
+            status: IP status.
+            tenant: Tenant name.
+            ip_type: IP type label.
+            description: Description text.
+            assigned_object_type: Assigned object type.
+            assigned_object_id: Assigned object ID.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Upsert result.
         """
-        data =  {
+        tenant_id_response = self.get_tenants_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        payload: Dict[str, Any] = {
             "address": address,
-            "tenant": self.get_tenants_id(name=tenant),
+            "tenant": tenant_id_response.data,
             "status": status,
             "description": description,
             "assigned_object_type": assigned_object_type,
             "assigned_object_id": assigned_object_id,
         }
+
         if ip_type:
-            
-            if ip_type == 'BGP':
-                color = 'ff0000'
-                slug = 'bgp'
-            elif ip_type == '电信':
-                color = '00ff00'
-                slug = 'china_telecom'
-            elif ip_type == '联通':
-                color = '0000ff'
-                slug = 'china_unicom'
-            elif ip_type == '移动':
-                color = 'ffff00'
-                slug = 'china_mobile'
-            elif ip_type == '内网':
-                color = '0000ff'
-                slug = 'intranet'
-            else:
-                color = '808080'
-                slug = 'other'
-                
-            data['tags'] = []
-            
-            data['tags'].append({
-                "name": ip_type,
-                "slug": slug,
-                # "color": "c5d40a"
-            })
-        data = Parse.remove_dict_none_value(data=data)
-        api_url = "/api/ipam/ip-addresses/"
-        ip_address_id = self.get_ipam_ipaddress_id(address=address)
-        if ip_address_id:
-            update_response = requests.put(url=self.url + api_url + f"{ip_address_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{address} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{address} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{address} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{address} 创建成功!", data=create_response.json())
+            slug_map = {
+                "BGP": "bgp",
+                "电信": "china_telecom",
+                "联通": "china_unicom",
+                "移动": "china_mobile",
+                "Other": "other",
+            }
+            payload["tags"] = [{"name": ip_type, "slug": slug_map.get(ip_type, "other")}]
 
-    def get_ipam_prefix_id(self, prefix):
-        """
-        获取ipam prefix id。
+        payload = Parse.remove_dict_none_value(payload)
 
-        Args:
-            prefix: prefix 参数。
+        ip_id_response = self.get_ipam_ipaddress_id(address=address)
+        if ip_id_response.code != 0:
+            return ip_id_response
 
-        Returns:
-            Any: 返回值。
-        """
-        api_url = "/api/ipam/prefixes/"
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for prefix in response.json()['results']:
-            if prefix['prefix'] == prefix:
-                return prefix['id']
-        return None
-    
-    def get_prefix_id_by_prefix(self, prefix):
-        """
-        获取prefix id by prefix。
-
-        Args:
-            prefix: prefix 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = "/api/ipam/prefixes/"
-        params = {
-            "prefix": prefix
-        }
-        r = requests.get(
-            url=self.url + api_url, 
-            headers=self.headers, 
-            params=params,
-            timeout=self.timeout
+        return self._upsert_resource(
+            "/api/ipam/ip-addresses/",
+            ip_id_response.data,
+            payload,
+            "ip-address",
+            address,
         )
-        if r.json()["count"] > 1:
-            raise ValueError(f"prefix {prefix} 存在多个结果")
-        elif r.json()["count"] == 0:
-            return None
-        else:
-            return r.json()['results'][0]['id']
 
-    def add_or_update_ipam_prefix(self, 
-                                  prefix, 
-                                  status: Literal['active', 'reserved', 'deprecated', 'dhcp', 'slaac']='active', 
-                                  vlan_id: int=1,
-                                  description: str=None,
-                                  tenant: str=None
-                                ):
-        """
-        新增or update ipam prefix。
+    def get_ipam_prefix_id(self, prefix: Optional[str]) -> ReturnResponse:
+        """Get prefix ID by prefix value.
 
         Args:
-            prefix: prefix 参数。
-            status: status 参数。
-            vlan_id: 资源 ID。
-            description: description 参数。
-            tenant: tenant 参数。
+            prefix: Prefix value.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Prefix ID in ``data``.
         """
-        data = {
+        return self._query_single_id(
+            "/api/ipam/prefixes/",
+            {"prefix": prefix},
+            "prefix",
+        )
+
+    def get_prefix_id_by_prefix(self, prefix: Optional[str]) -> ReturnResponse:
+        """Get prefix ID by prefix value.
+
+        Args:
+            prefix: Prefix value.
+
+        Returns:
+            ReturnResponse: Prefix ID in ``data``.
+        """
+        return self.get_ipam_prefix_id(prefix=prefix)
+
+    def add_or_update_ipam_prefix(
+        self,
+        prefix: str,
+        status: Literal["active", "reserved", "deprecated", "dhcp", "slaac"] = "active",
+        vlan_id: Optional[int] = 1,
+        description: Optional[str] = None,
+        tenant: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a prefix.
+
+        Args:
+            prefix: Prefix value.
+            status: Prefix status.
+            vlan_id: VLAN ID.
+            description: Description text.
+            tenant: Tenant name.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        tenant_id_response = self.get_tenants_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        payload = {
             "prefix": prefix,
             "status": status,
             "description": description,
-            "tenant": self.get_tenants_id(name=tenant)
+            "tenant": tenant_id_response.data,
+            "vlan": vlan_id,
         }
-        data = Parse.remove_dict_none_value(data)
-        api_url = "/api/ipam/prefixes/"    
-        prefix_id = self.get_prefix_id_by_prefix(prefix=prefix)
-        if prefix_id:
-            update_response = requests.put(url=self.url + api_url + f"{prefix_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{prefix} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{prefix} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{prefix} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{prefix} 创建成功!", data=create_response.json())
-  
-    def get_ipam_ip_range_id(self, start_address, end_address):
-        """
-        获取ipam ip range id。
+        payload = Parse.remove_dict_none_value(payload)
+
+        prefix_id_response = self.get_prefix_id_by_prefix(prefix=prefix)
+        if prefix_id_response.code != 0:
+            return prefix_id_response
+
+        return self._upsert_resource(
+            "/api/ipam/prefixes/",
+            prefix_id_response.data,
+            payload,
+            "prefix",
+            prefix,
+        )
+
+    def get_ipam_ip_range_id(
+        self,
+        start_address: Optional[str],
+        end_address: Optional[str],
+    ) -> ReturnResponse:
+        """Get IP range ID by start and end addresses.
 
         Args:
-            start_address: start_address 参数。
-            end_address: end_address 参数。
+            start_address: Start address.
+            end_address: End address.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: IP range ID in ``data``.
         """
-        api_url = "/api/ipam/ip-ranges/"
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for ip_range in response.json()['results']:
-            if ip_range['start_address'] == start_address and ip_range['end_address'] == end_address:
-                return ip_range['id']
-        return None
+        return self._query_single_id(
+            "/api/ipam/ip-ranges/",
+            {"start_address": start_address, "end_address": end_address},
+            "ip-range",
+        )
 
-    def add_or_update_ip_ranges(self, start_address, end_address, status: Literal['active', 'reserved', 'deprecated']='active', description: str=None, comments: str=None):
-        """
-        新增or update ip ranges。
+    def add_or_update_ip_ranges(
+        self,
+        start_address: str,
+        end_address: str,
+        status: Literal["active", "reserved", "deprecated"] = "active",
+        description: Optional[str] = None,
+        comments: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update an IP range.
 
         Args:
-            start_address: start_address 参数。
-            end_address: end_address 参数。
-            status: status 参数。
-            description: description 参数。
-            comments: comments 参数。
+            start_address: Start address.
+            end_address: End address.
+            status: IP range status.
+            description: Description text.
+            comments: Comments text.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Upsert result.
         """
-        data = {
-            "start_address": start_address,
-            "end_address": end_address,
-            # "vrf": 0,
-            # "tenant": 0,
-            "status": status,
-            # "role": 0,
-            # "description": "string",
-            # "comments": "string",
-        }
-        api_url = "/api/ipam/ip-ranges"
-        ip_range_id = self.get_ipam_ip_range_id(start_address=start_address, end_address=end_address)
-        if ip_range_id:
-            # update_response = requests.put(url=self.url + api_url + f"{ip_range_id}", headers=self.headers, json=data, timeout=self.timeout)
-            data['id'] = ip_range_id
-            update_response = self.pynetbox.ipam.ip_ranges.update([data])
-        else:
-            create_response = self.pynetbox.ipam.ip_ranges.create(**data)
-            # print(create_response)
-        #     create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-        try:
-            return ReturnResponse(code=0, message=f"{start_address} 已存在, 更新成功!", data=update_response)
-        except UnboundLocalError:
-            return ReturnResponse(code=0, message=f"{start_address} 创建成功!", data=create_response)
+        range_id_response = self.get_ipam_ip_range_id(start_address=start_address, end_address=end_address)
+        if range_id_response.code != 0:
+            return range_id_response
 
-    def get_tenants_id(self, name):
-        """
-        获取tenants id。
+        payload = Parse.remove_dict_none_value(
+            {
+                "start_address": start_address,
+                "end_address": end_address,
+                "status": status,
+                "description": description,
+                "comments": comments,
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/ipam/ip-ranges/",
+            range_id_response.data,
+            payload,
+            "ip-range",
+            f"{start_address}-{end_address}",
+        )
+
+    def add_or_update_tenants(self, name: str, slug: Optional[str] = None) -> ReturnResponse:
+        """Create or update a tenant.
 
         Args:
-            name: name 参数。
+            name: Tenant name.
+            slug: Optional tenant slug.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Upsert result.
         """
-        api_url = "/api/tenancy/tenants"
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"tenant {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
+        resolved_slug = self._process_slug(name if slug is None else slug)
+        tenant_id_response = self.get_tenants_id(name=name)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
 
-    def add_or_update_tenants(self, name, slug: str=None) -> ReturnResponse:
-        '''
-        添加或更新租户, requests 会有问题, 添加时提示成功，但实际没有添加，所以用了 pynetbox 模块
+        payload = {"name": name, "slug": resolved_slug}
+        return self._upsert_resource(
+            "/api/tenancy/tenants/",
+            tenant_id_response.data,
+            payload,
+            "tenant",
+            name,
+        )
+
+    def _process_slug(self, name: str) -> str:
+        """Normalize slug value.
 
         Args:
-            name (str): 租户名称
-            slug (str, optional): _description_. Defaults to None.
+            name: Source value.
 
         Returns:
-            ReturnResponse: 返回响应对象
-        '''
-        if slug is None:
-            slug = self._process_slug(name=name)
-
-        data = {
-            "name": name,
-            "slug": slug
-        }
-        tenant_id = self.get_tenants_id(name=name)
-        if tenant_id:
-            data['id'] = tenant_id
-            try:
-                r = self.pynetbox.tenancy.tenants.update([data])
-                action = 'update'
-            except pynetbox.core.query.RequestError as e:
-                return ReturnResponse(code=1, msg=f"[{action}] tenant [{name}], slug [{slug}] failed! {e}", data=None)
-        else:
-            try:
-                r = self.pynetbox.tenancy.tenants.create(data)
-                action = 'create'
-            except pynetbox.core.query.RequestError as e:
-                return ReturnResponse(code=1, msg=f"create tenant [{name}], slug [{slug}] failed! {e}", data=None)
-        return ReturnResponse(code=0, msg=f"[{action}] tenant [{name}], slug [{slug}] success!", data=r)
-    
-    def _process_slug(self, name):
-        """
-        执行 process slug 相关逻辑。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
+            str: Normalized slug.
         """
         slug_mapping = {
-            "联想": "Lenovo",
-            "群晖": "Synology",
-            "锐捷": "Ruijie",
+            "联想": "lenovo",
+            "群晖": "synology",
+            "锐捷": "ruijie",
             "创旗": "trunkey",
             "创旗 TSDS-600": "trunkey_tsds_600",
-            "espace_iad132e": "espace_iad132e",
             "磁带库": "tape_library",
             "行为管理": "ac",
             "路由器": "router",
@@ -619,443 +845,436 @@ class NetboxClient:
             "无线控制器": "wireless_ac",
             "待补充": "other",
             "备案系统": "icp_system",
-            "其他": "other",
             "堡垒机": "bastion_host",
             "负载均衡": "load_balancer",
             "客户": "customer",
             "运维": "devops",
-            "供应商": "vendor"
+            "供应商": "vendor",
         }
-        slug = slug_mapping.get(name, None)
+        slug = slug_mapping.get(name)
         if slug is None:
-            # slug = lazy_pinyin(name, style=Style.NORMAL)
-            slug = ''.join(lazy_pinyin(name))
-        return slug.lower().replace(' ', '_').replace('-', '_').replace('(', '').replace(')', '').replace('（', '').replace('）', '').replace('+','').replace('’', '').replace("'", "")
-    
-    def _process_gps(self, value):
-        """
-        执行 process gps 相关逻辑。
+            slug = "".join(lazy_pinyin(name))
+        return (
+            slug.lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("（", "")
+            .replace("）", "")
+            .replace("+", "")
+            .replace("’", "")
+            .replace("'", "")
+        )
+
+    def _process_gps(self, value: Optional[Any]) -> Optional[float]:
+        """Normalize GPS value.
 
         Args:
-            value: value 参数。
+            value: Raw GPS value.
 
         Returns:
-            Any: 返回值。
+            Optional[float]: Rounded float GPS value.
         """
-        value = value.replace('\u200c\u200c', '')
-        return round(float(value), 2) if value is not None else None
-    
-    def get_manufacturer_id_by_name(self, name):
-        """
-        获取manufacturer id by name。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/manufacturers/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"manufacturer {name} 存在多个结果")
-        elif response.json()['count'] == 0:
+        if value is None:
             return None
+        if isinstance(value, str):
+            cleaned = value.replace("\u200c\u200c", "").strip()
+            if cleaned == "":
+                return None
         else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_device_type(self, 
-                                  model: Literal['ISR1100-4G', 'MS210-48FP', 'MS210-24FP', 'MR44'],
-                                  slug: str=None,
-                                  u_height: int=None,
-                                  manufacturer: str=None
-                                  ):
-        
-        """
-        新增or update device type。
+            cleaned = str(value)
+        try:
+            return round(float(cleaned), 2)
+        except ValueError:
+            return None
+
+    def get_manufacturer_id_by_name(self, name: Optional[str]) -> ReturnResponse:
+        """Get manufacturer ID by name.
 
         Args:
-            model: model 参数。
-            slug: slug 参数。
-            u_height: u_height 参数。
-            manufacturer: manufacturer 参数。
+            name: Manufacturer name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Manufacturer ID in ``data``.
         """
-        if slug is None:
-            slug = self._process_slug(name=model)
-        
-        # print(slug)
-        # 优化：使用字典默认值直接映射，不再重复 if/elif 判断
+        return self._query_single_id(
+            "/api/dcim/manufacturers/",
+            {"name": name},
+            "manufacturer",
+        )
+
+    def add_or_update_device_type(
+        self,
+        model: Literal["ISR1100-4G", "MS210-48FP", "MS210-24FP", "MR44"],
+        slug: Optional[str] = None,
+        u_height: Optional[int] = None,
+        manufacturer: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a device type.
+
+        Args:
+            model: Device model.
+            slug: Optional slug.
+            u_height: Device height.
+            manufacturer: Manufacturer name.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        manufacturer_id_response = self.get_manufacturer_id_by_name(name=manufacturer)
+        if manufacturer_id_response.code != 0:
+            return manufacturer_id_response
+
         default_u_height = {
-            'ISR1100-4G': 1,
-            'MS210-48FP': 1,
-            'MS210-24FP': 1,
-            'MR44': 1
+            "ISR1100-4G": 1,
+            "MS210-48FP": 1,
+            "MS210-24FP": 1,
+            "MR44": 1,
         }
-        if u_height is None:
-            u_height = default_u_height.get(model, 1)
-        
-        api_url = '/api/dcim/device-types/'
-        data = {
+        resolved_u_height = default_u_height.get(model, 1) if u_height is None else u_height
+        resolved_slug = self._process_slug(model if slug is None else slug)
+
+        payload = {
             "model": model,
-            "slug": slug,
-            "u_height": u_height,
-            "manufacturer": self.get_manufacturer_id_by_name(name=manufacturer)
+            "slug": resolved_slug,
+            "u_height": resolved_u_height,
+            "manufacturer": manufacturer_id_response.data,
         }
-        # print(data)
-        device_type_id = self.get_device_type_id(model=model)
-        if device_type_id:
-            update_response = requests.put(url=self.url + api_url + f"{device_type_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{model} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{model} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"{model} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"{model} 创建成功!", data=create_response.json())
 
-    def get_device_type_id(self, model):
-        """
-        获取device type id。
+        device_type_id_response = self.get_device_type_id(model=model)
+        if device_type_id_response.code != 0:
+            return device_type_id_response
+
+        return self._upsert_resource(
+            "/api/dcim/device-types/",
+            device_type_id_response.data,
+            payload,
+            "device-type",
+            model,
+        )
+
+    def get_device_type_id(self, model: Optional[str]) -> ReturnResponse:
+        """Get device type ID by model.
 
         Args:
-            model: model 参数。
+            model: Device model.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Device type ID in ``data``.
         """
-        api_url = '/api/dcim/device-types/'
-        params = {
-            "model": model
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"device type {model} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
+        return self._query_single_id(
+            "/api/dcim/device-types/",
+            {"model": model},
+            "device-type",
+        )
 
-    def get_manufacturer_id(self, name):
-        """
-        获取manufacturer id。
+    def get_manufacturer_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get manufacturer ID by name.
 
         Args:
-            name: name 参数。
+            name: Manufacturer name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Manufacturer ID in ``data``.
         """
-        api_url = '/api/dcim/manufacturers/'
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for manufacturer in response.json()['results']:
-            if manufacturer['name'] == name:
-                return manufacturer['id']
-        return None
+        return self.get_manufacturer_id_by_name(name=name)
 
-    def add_or_update_manufacturer(self, 
-                                  name: Literal['Cisco Viptela', 'Cisco Meraki', 'Cisco', 'PaloAlto'],
-                                  slug: str=None
-                                  ) -> ReturnResponse:
-        '''
-        添加或更新制造商
+    def add_or_update_manufacturer(
+        self,
+        name: Literal["Cisco Viptela", "Cisco Meraki", "Cisco", "PaloAlto"],
+        slug: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a manufacturer.
 
         Args:
-            name (Literal['Cisco Viptela', 'Cisco Meraki', 'Cisco', 'PaloAlto']): 制造商名称
-            slug (str, optional): 制造商 slug. Defaults to None.
+            name: Manufacturer name.
+            slug: Optional slug.
 
         Returns:
-            ReturnResponse: 返回响应对象
-        '''
-        
-        if slug is None:
-            slug = self._process_slug(name=name)
+            ReturnResponse: Upsert result.
+        """
+        manufacturer_id_response = self.get_manufacturer_id(name=name)
+        if manufacturer_id_response.code != 0:
+            return manufacturer_id_response
 
-        api_url = '/api/dcim/manufacturers/'
-        data = {
+        resolved_slug = self._process_slug(name if slug is None else slug)
+        payload = {"name": name, "slug": resolved_slug}
+
+        return self._upsert_resource(
+            "/api/dcim/manufacturers/",
+            manufacturer_id_response.data,
+            payload,
+            "manufacturer",
+            name,
+        )
+
+    def get_device_id_by_name(self, name: Optional[str]) -> ReturnResponse:
+        """Get device ID by device name.
+
+        Args:
+            name: Device name.
+
+        Returns:
+            ReturnResponse: Device ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/devices/",
+            {"name": name},
+            "device",
+        )
+
+    def get_tenant_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get tenant ID by tenant name.
+
+        Args:
+            name: Tenant name.
+
+        Returns:
+            ReturnResponse: Tenant ID in ``data``.
+        """
+        return self.get_tenants_id(name=name)
+
+    def get_site_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get site ID by site name.
+
+        Args:
+            name: Site name.
+
+        Returns:
+            ReturnResponse: Site ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/sites/",
+            {"name": name},
+            "site",
+        )
+
+    def get_device_id(
+        self,
+        name: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Get device ID by name and tenant.
+
+        Args:
+            name: Device name.
+            tenant_id: Tenant ID filter.
+
+        Returns:
+            ReturnResponse: Device ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/devices/",
+            {"name": name, "tenant_id": tenant_id},
+            "device",
+        )
+
+    def get_device_type_id_by_name(self, name: Optional[str]) -> ReturnResponse:
+        """Get device type ID by model name with fallback.
+
+        Args:
+            name: Device type model name.
+
+        Returns:
+            ReturnResponse: Device type ID in ``data``.
+        """
+        primary_name = name or "other"
+        primary_response = self.get_device_type_id(model=primary_name)
+        if primary_response.code != 0:
+            return primary_response
+        if primary_response.data is not None:
+            return primary_response
+        if primary_name == "other":
+            return primary_response
+        return self.get_device_type_id(model="other")
+
+    def add_or_update_device(
+        self,
+        name: str,
+        device_type: Literal["ISR1100-4G", "MS210-48FP", "MS210-24FP", "MR44", "MR42", "other"] = "other",
+        site: Optional[str] = None,
+        status: Literal["active", "offline", "planned", "staged", "failed"] = "active",
+        role: Literal["router", "switch", "wireless_ap", "other"] = "other",
+        description: Optional[str] = None,
+        primary_ip4: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        rack: Optional[str] = None,
+        tenant: Optional[str] = None,
+        serial: Optional[str] = None,
+        face: Literal["front", "rear"] = "front",
+        position: Optional[int] = None,
+        comments: Optional[str] = None,
+        software_version: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a device.
+
+        Args:
+            name: Device name.
+            device_type: Device type.
+            site: Site name.
+            status: Device status.
+            role: Device role name.
+            description: Description text.
+            primary_ip4: Primary IPv4 value.
+            latitude: Latitude value.
+            longitude: Longitude value.
+            rack: Rack name.
+            tenant: Tenant name.
+            serial: Serial number.
+            face: Rack face.
+            position: Rack position.
+            comments: Comments text.
+            software_version: Software version.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        device_type_id_response = self.get_device_type_id_by_name(name=device_type)
+        if device_type_id_response.code != 0:
+            return device_type_id_response
+
+        role_id_response = self.get_device_role_id(name=role)
+        if role_id_response.code != 0:
+            return role_id_response
+
+        site_id_response = self.get_site_id(name=site)
+        if site_id_response.code != 0:
+            return site_id_response
+
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        ip_id_response = self.get_ipam_ipaddress_id(address=primary_ip4)
+        if ip_id_response.code != 0:
+            return ip_id_response
+
+        rack_id_response = self.get_rack_id(name=rack, tenant=tenant)
+        if rack_id_response.code != 0:
+            return rack_id_response
+
+        payload: Dict[str, Any] = {
             "name": name,
-            "slug": slug,
-        }
-        manufacturer_id = self.get_manufacturer_id(name=name)
-        if manufacturer_id:
-            update_response = requests.put(url=self.url + api_url + f"{manufacturer_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"manufacturer {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:   
-                return ReturnResponse(code=0, msg=f"manufacturer {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"manufacturer {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"manufacturer {name} 创建成功!", data=create_response.json())
-    
-    def get_device_id_by_name(self, name):
-        """
-        获取device id by name。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/devices/'
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        for device in response.json()['results']:
-            if device['name'] == name:
-                return device['id']
-        return None
-    
-    def get_tenant_id(self, name):
-        """
-        获取tenant id。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/tenants/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if name is None:
-            return None
-        elif response.json()['count'] > 1:
-            raise ValueError(f"tenant {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def get_site_id(self, name):
-        """
-        获取site id。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/sites/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        for site in response.json()['results']:
-            if site['name'] == name:
-                return site['id']
-        return None
-    
-    def get_device_id(self, name: str=None, tenant_id: str=None):
-        """
-        获取device id。
-
-        Args:
-            name: name 参数。
-            tenant_id: 资源 ID。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/devices/'
-        params = {
-            "name": name,
-            "tenant_id": tenant_id
-        }
-        params = Parse.remove_dict_none_value(params)
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"device {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def get_device_type_id_by_name(self, name):
-        """
-        获取device type id by name。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        if name is not None:
-            api_url = '/api/dcim/device-types/'
-            params = {
-                "model": name
-            }
-            response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-            # print(response.json())
-            if response.json()['count'] > 1:
-                raise ValueError(f"device type {name} 存在多个结果")
-            elif response.json()['count'] == 0 or name is None:
-                return self.get_device_type_id_by_name(name='other')
-                # return 'other'
-            else:
-                return response.json()['results'][0]['id']
-        return self.get_device_type_id_by_name(name='other')
-    
-    def add_or_update_device(self,
-                             name,
-                             device_type: Literal['ISR1100-4G', 'MS210-48FP', 'MS210-24FP', 'MR44', 'MR42', 'other']='other',
-                             site: str=None,
-                             status: Literal['active', 'offline', 'planned', 'staged', 'failed']='active',
-                             role: Literal['router', 'switch', 'wireless_ap', 'other']='other',
-                             description: str=None,
-                             primary_ip4: str=None,
-                             latitude: float=None,
-                             longitude: float=None,
-                             rack: str=None,
-                             tenant: str=None,
-                             serial: str=None,
-                             face: Literal['front', 'rear']='front',
-                             position: int=None,
-                             comments: str=None,
-                             software_version: str=None,
-                        ):
-        """
-        新增or update device。
-
-        Args:
-            name: name 参数。
-            device_type: device_type 参数。
-            site: site 参数。
-            status: status 参数。
-            role: role 参数。
-            description: description 参数。
-            primary_ip4: primary_ip4 参数。
-            latitude: latitude 参数。
-            longitude: longitude 参数。
-            rack: rack 参数。
-            tenant: tenant 参数。
-            serial: serial 参数。
-            face: face 参数。
-            position: position 参数。
-            comments: comments 参数。
-            software_version: software_version 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/devices/'
-        data = {
-            "name": name,
-            "device_type": self.get_device_type_id_by_name(name=device_type),
-            "role": self.get_device_role_id(name=role),
-            "site": self.get_site_id(name=site),
+            "device_type": device_type_id_response.data,
+            "role": role_id_response.data,
+            "site": site_id_response.data,
             "description": description,
             "status": status,
-            "primary_ip4": self.get_ipam_ipaddress_id(address=primary_ip4),
-            "latitude": self._process_gps(value=latitude),
-            "longitude": self._process_gps(value=longitude),
-            "rack": self.get_rack_id(name=rack, tenant=tenant),
-            "tenant": self.get_tenant_id(name=tenant),
+            "primary_ip4": ip_id_response.data,
+            "latitude": self._process_gps(latitude),
+            "longitude": self._process_gps(longitude),
+            "rack": rack_id_response.data,
+            "tenant": tenant_id_response.data,
             "serial": serial,
             "face": face,
             "position": position,
             "comments": comments,
         }
+
         if software_version:
-            data['custom_fields'] = {}
-            data['custom_fields']['SoftwareVersion'] = software_version
-        data = Parse.remove_dict_none_value(data=data)
-        device_id = self.get_device_id(name=name, tenant_id=self.get_tenant_id(name=tenant))
+            payload["custom_fields"] = {"SoftwareVersion": software_version}
 
-        if device_id:
-            update_response = requests.put(url=self.url + api_url + f"{device_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device {name} exists, updated failed! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"device {name} exists, updated successfully!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device {name} created failed! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"device {name} created successfully!", data=create_response.json())
-    
-    def set_primary_ip4_to_device(self, device_name, tenant, primary_ip4):
-        """
-        设置primary ip4 to device。
+        payload = Parse.remove_dict_none_value(payload)
 
-        Args:
-            device_name: device_name 参数。
-            tenant: tenant 参数。
-            primary_ip4: primary_ip4 参数。
+        device_id_response = self.get_device_id(
+            name=name,
+            tenant_id=tenant_id_response.data,
+        )
+        if device_id_response.code != 0:
+            return device_id_response
 
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/devices/'
-        data = {
-            "name": device_name,
-            "tenant": tenant,
-            "primary_ip4": self.get_ipam_ipaddress_id(address=primary_ip4)
-        }
-        device_id = self.get_device_id(name=device_name, tenant_id=self.get_tenant_id(name=tenant))
-        if device_id:
-            response = requests.put(url=self.url + api_url + f"{device_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device {device_name} 更新失败! {response.json()}", data=response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"device {device_name} 已存在, 更新成功!", data=response.json())
-        else:
-            return ReturnResponse(code=1, msg=f"device {device_name} 不存在!", data=None)
-    
-    def get_device_role_id(self, name):
-        """
-        获取device role id。
+        return self._upsert_resource(
+            "/api/dcim/devices/",
+            device_id_response.data,
+            payload,
+            "device",
+            name,
+        )
+
+    def set_primary_ip4_to_device(
+        self,
+        device_name: str,
+        tenant: Optional[str],
+        primary_ip4: str,
+    ) -> ReturnResponse:
+        """Set primary IPv4 for a device.
 
         Args:
-            name: name 参数。
+            device_name: Device name.
+            tenant: Tenant name.
+            primary_ip4: IPv4 value.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Update result.
         """
-        api_url = '/api/dcim/device-roles/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"device role {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_device_role(self,
-                                  name: str=None,
-                                  slug: str=None,
-                                  description: str=None,
-                                  color: Literal['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray', 'black']='gray',
-                            ) -> ReturnResponse:
-        """
-        新增or update device role。
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        device_id_response = self.get_device_id(
+            name=device_name,
+            tenant_id=tenant_id_response.data,
+        )
+        if device_id_response.code != 0:
+            return device_id_response
+        if device_id_response.data is None:
+            return self._fail(msg=f"device [{device_name}] not found")
+
+        ip_id_response = self.get_ipam_ipaddress_id(address=primary_ip4)
+        if ip_id_response.code != 0:
+            return ip_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "name": device_name,
+                "tenant": tenant_id_response.data,
+                "primary_ip4": ip_id_response.data,
+            }
+        )
+
+        response = self._request_with_retry(
+            "PUT",
+            f"/api/dcim/devices/{device_id_response.data}/",
+            json_data=payload,
+        )
+        if response.code != 0:
+            return self._fail(msg=f"device [{device_name}] update failed", data=response.data)
+        return self._ok(msg=f"device [{device_name}] updated", data=response.data)
+
+    def get_device_role_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get device role ID by name.
 
         Args:
-            name: name 参数。
-            slug: slug 参数。
-            description: description 参数。
-            color: color 参数。
+            name: Device role name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Device role ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/device-roles/",
+            {"name": name},
+            "device-role",
+        )
+
+    def add_or_update_device_role(
+        self,
+        name: Optional[str] = None,
+        slug: Optional[str] = None,
+        description: Optional[str] = None,
+        color: Literal["red", "orange", "yellow", "green", "blue", "purple", "gray", "black"] = "gray",
+    ) -> ReturnResponse:
+        """Create or update a device role.
+
+        Args:
+            name: Device role name.
+            slug: Role slug.
+            description: Description text.
+            color: Color name.
+
+        Returns:
+            ReturnResponse: Upsert result.
         """
         color_map = {
             "red": "ff0000",
@@ -1067,718 +1286,751 @@ class NetboxClient:
             "gray": "808080",
             "black": "000000",
         }
-        
-        color = color_map[color]
 
-        if slug is None:
-            slug = self._process_slug(name=name)
-            
-        api_url = '/api/dcim/device-roles/'
-        data = {
-            "name": name,
-            "slug": slug,
-            "color": color,
-        }
-        if description:
-            data['description'] = description
-        
-        device_role_id = self.get_device_role_id(name=name)
-        if device_role_id:
-            update_response = requests.put(url=self.url + api_url + f"{device_role_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device role {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"device role {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"device role {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"device role {name} 创建成功!", data=create_response.json())
-    
-    def get_contact_id(self, name):
-        """
-        获取contact id。
+        role_id_response = self.get_device_role_id(name=name)
+        if role_id_response.code != 0:
+            return role_id_response
 
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/contacts/'
-        parms = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=parms)
-        if response.json()['count'] > 1:
-            raise ValueError(f"contact {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_contacts(self, 
-                               name: str=None, 
-                               email: str=None,
-                               phone: str=None, 
-                               id_card: str=None, 
-                               description: str=None):
-        """
-        新增or update contacts。
-
-        Args:
-            name: name 参数。
-            email: email 参数。
-            phone: phone 参数。
-            id_card: id_card 参数。
-            description: description 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/contacts/'
-        data = Parse.remove_dict_none_value({
-            "name": name,
-            "email": email,
-            "phone": phone,
-            "description": description,
-            "custom_fields": {
-                "id_card": id_card,
+        payload = Parse.remove_dict_none_value(
+            {
+                "name": name,
+                "slug": self._process_slug(name if slug is None else slug),
+                "color": color_map[color],
+                "description": description,
             }
-        })
-        contact_id = self.get_contact_id(name=name)
-        if contact_id:
-            update_response = requests.put(url=self.url + api_url + f"{contact_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact [{name}] 更新失败! {update_response.json()}", data=update_response.json())
+        )
+
+        return self._upsert_resource(
+            "/api/dcim/device-roles/",
+            role_id_response.data,
+            payload,
+            "device-role",
+            str(name),
+        )
+
+    def get_contact_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get contact ID by name.
+
+        Args:
+            name: Contact name.
+
+        Returns:
+            ReturnResponse: Contact ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/tenancy/contacts/",
+            {"name": name},
+            "contact",
+        )
+
+    def add_or_update_contacts(
+        self,
+        name: Optional[str] = None,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        id_card: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a contact.
+
+        Args:
+            name: Contact name.
+            email: Contact email.
+            phone: Contact phone.
+            id_card: Custom ID card value.
+            description: Description text.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        contact_id_response = self.get_contact_id(name=name)
+        if contact_id_response.code != 0:
+            return contact_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "description": description,
+                "custom_fields": {"id_card": id_card},
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/tenancy/contacts/",
+            contact_id_response.data,
+            payload,
+            "contact",
+            str(name),
+        )
+
+    def get_rack_id(self, name: Optional[str], tenant: Optional[str]) -> ReturnResponse:
+        """Get rack ID by name and tenant.
+
+        Args:
+            name: Rack name.
+            tenant: Tenant name.
+
+        Returns:
+            ReturnResponse: Rack ID in ``data``.
+        """
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        return self._query_single_id(
+            "/api/dcim/racks/",
+            {
+                "name": name,
+                "tenant_id": tenant_id_response.data,
+            },
+            "rack",
+        )
+
+    def add_or_update_rack(
+        self,
+        site: Optional[str] = None,
+        name: Optional[str] = None,
+        status: Literal["active", "reserved", "deprecated"] = "active",
+        tenant: Optional[str] = None,
+        u_height: Optional[int] = None,
+        facility: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a rack.
+
+        Args:
+            site: Site name.
+            name: Rack name.
+            status: Rack status.
+            tenant: Tenant name.
+            u_height: Rack height.
+            facility: Facility value.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        if status not in ["active", "reserved", "deprecated"]:
+            return self._fail(msg=f"rack status [{status}] is invalid")
+
+        site_id_response = self.get_site_id(name=site)
+        if site_id_response.code != 0:
+            return site_id_response
+
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        rack_id_response = self.get_rack_id(name=name, tenant=tenant)
+        if rack_id_response.code != 0:
+            return rack_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "site": site_id_response.data,
+                "name": name,
+                "status": status,
+                "tenant": tenant_id_response.data,
+                "u_height": u_height,
+                "facility": facility,
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/dcim/racks/",
+            rack_id_response.data,
+            payload,
+            "rack",
+            str(name),
+        )
+
+    def get_tags_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get tag ID by name.
+
+        Args:
+            name: Tag name.
+
+        Returns:
+            ReturnResponse: Tag ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/extras/tags/",
+            {"name": name},
+            "tag",
+        )
+
+    def add_or_update_tags(self, name: str, slug: str, color: str) -> ReturnResponse:
+        """Create or update a tag.
+
+        Args:
+            name: Tag name.
+            slug: Tag slug.
+            color: Tag color.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        tag_id_response = self.get_tags_id(name=name)
+        if tag_id_response.code != 0:
+            return tag_id_response
+
+        payload = {"name": name, "slug": slug, "color": color}
+        return self._upsert_resource(
+            "/api/extras/tags/",
+            tag_id_response.data,
+            payload,
+            "tag",
+            name,
+        )
+
+    def get_interface_id(self, device: Optional[str], name: Optional[str]) -> ReturnResponse:
+        """Get interface ID by device and name.
+
+        Args:
+            device: Device name.
+            name: Interface name.
+
+        Returns:
+            ReturnResponse: Interface ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/interfaces/",
+            {"name": name, "device": device},
+            "interface",
+        )
+
+    def add_or_update_interfaces(
+        self,
+        name: str,
+        device: str,
+        interface_type: Literal["1000base-t", "2.5gbase-t", "1gfc-sfp", "cisco-stackwise", "other"] = "other",
+        tenant: Optional[str] = None,
+        label: Optional[str] = None,
+        poe_mode: Optional[Literal["pd", "pse"]] = None,
+        poe_type: Optional[Literal["type2-ieee802.3at"]] = None,
+        description: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update an interface.
+
+        Args:
+            name: Interface name.
+            device: Device name.
+            interface_type: Interface type.
+            tenant: Tenant name.
+            label: Interface label.
+            poe_mode: PoE mode.
+            poe_type: PoE type.
+            description: Description text.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        device_id_response = self.get_device_id(
+            name=device,
+            tenant_id=tenant_id_response.data,
+        )
+        if device_id_response.code != 0:
+            return device_id_response
+
+        interface_id_response = self.get_interface_id(name=name, device=device)
+        if interface_id_response.code != 0:
+            return interface_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "name": name,
+                "device": device_id_response.data,
+                "type": interface_type,
+                "label": label,
+                "poe_mode": poe_mode,
+                "poe_type": poe_type,
+                "description": description,
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/dcim/interfaces/",
+            interface_id_response.data,
+            payload,
+            "interface",
+            name,
+        )
+
+    def get_contact_role_id(self, name: Optional[str]) -> ReturnResponse:
+        """Get contact role ID by name.
+
+        Args:
+            name: Contact role name.
+
+        Returns:
+            ReturnResponse: Contact role ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/tenancy/contact-roles/",
+            {"name": name},
+            "contact-role",
+        )
+
+    def add_or_update_contact_role(self, name: str) -> ReturnResponse:
+        """Create or update a contact role.
+
+        Args:
+            name: Contact role name.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        contact_role_id_response = self.get_contact_role_id(name=name)
+        if contact_role_id_response.code != 0:
+            return contact_role_id_response
+
+        payload = {"name": name, "slug": self._process_slug(name)}
+        return self._upsert_resource(
+            "/api/tenancy/contact-roles/",
+            contact_role_id_response.data,
+            payload,
+            "contact-role",
+            name,
+        )
+
+    def is_contact_assignmentd(
+        self,
+        contact_id: int,
+        object_type: Literal["dcim.site", "dcim.location", "dcim.rack", "dcim.device", "dcim.interface"],
+        role: str,
+    ) -> ReturnResponse:
+        """Check whether a contact assignment exists.
+
+        Args:
+            contact_id: Contact ID.
+            object_type: Object type.
+            role: Contact role ID.
+
+        Returns:
+            ReturnResponse: ``data`` is a bool value.
+        """
+        response = self._request_with_retry(
+            "GET",
+            "/api/tenancy/contact-assignments/",
+            params={
+                "contact_id": contact_id,
+                "object_type": object_type,
+                "role_id": role,
+            },
+        )
+        if response.code != 0:
+            return response
+
+        results = self._extract_results(response.data)
+        exists = len(results) > 0
+        return self._ok(
+            msg="contact-assignment exists" if exists else "contact-assignment not found",
+            data=exists,
+        )
+
+    def get_contact_assignment_id(
+        self,
+        contact_id: int,
+        object_type: Literal["dcim.site", "dcim.location", "dcim.rack", "dcim.device", "dcim.interface"],
+        role: str,
+    ) -> ReturnResponse:
+        """Get contact assignment ID.
+
+        Args:
+            contact_id: Contact ID.
+            object_type: Object type.
+            role: Contact role ID.
+
+        Returns:
+            ReturnResponse: Assignment ID in ``data``.
+        """
+        response = self._request_with_retry(
+            "GET",
+            "/api/tenancy/contact-assignments/",
+            params={
+                "contact_id": contact_id,
+                "object_type": object_type,
+                "role_id": role,
+            },
+        )
+        if response.code != 0:
+            return response
+
+        results = self._extract_results(response.data)
+        if not results:
+            return self._ok(msg="contact-assignment not found", data=None)
+        return self._ok(msg="contact-assignment found", data=results[0].get("id"))
+
+    def assign_contact_to_object(
+        self,
+        contact: str,
+        object_type: Literal["dcim.site", "dcim.location", "dcim.rack", "dcim.device", "dcim.interface"],
+        object_name: str,
+        role: str,
+        priority: Literal["primary", "secondary", "tertiary", "inactive"] = "primary",
+        tenant: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Assign a contact to a NetBox object.
+
+        Args:
+            contact: Contact name.
+            object_type: Object type.
+            object_name: Object name.
+            role: Contact role name.
+            priority: Assignment priority.
+            tenant: Optional tenant for rack/device lookup.
+
+        Returns:
+            ReturnResponse: Assignment upsert result.
+        """
+        object_id_response: ReturnResponse
+        if object_type == "dcim.site":
+            object_id_response = self.get_site_id(name=object_name)
+        elif object_type == "dcim.location":
+            object_id_response = self.get_dcim_location_id(name=object_name)
+        elif object_type == "dcim.rack":
+            object_id_response = self.get_rack_id(name=object_name, tenant=tenant)
+        elif object_type == "dcim.device":
+            tenant_id_response = self.get_tenant_id(name=tenant)
+            if tenant_id_response.code != 0:
+                return tenant_id_response
+            object_id_response = self.get_device_id(
+                name=object_name,
+                tenant_id=tenant_id_response.data,
+            )
+        elif object_type == "dcim.interface":
+            if "/" in object_name:
+                device_name, interface_name = object_name.split("/", 1)
             else:
-                return ReturnResponse(code=0, msg=f"contact [{name}] 已存在, 更新成功!", data=update_response.json())
+                device_name, interface_name = object_name, object_name
+            object_id_response = self.get_interface_id(device=device_name, name=interface_name)
         else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact [{name}] 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"contact [{name}] 创建成功!", data=create_response.json())
-    
-    def get_rack_id(self, name, tenant):
-        """
-        获取rack id。
+            return self._fail(msg=f"object_type [{object_type}] is invalid")
 
-        Args:
-            name: name 参数。
-            tenant: tenant 参数。
+        if object_id_response.code != 0:
+            return object_id_response
 
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/racks/'
-        parms = {
-            "name": name,
-            "tenant_id": self.get_tenant_id(name=tenant)
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=parms)
-        if response.json()['count'] > 1:
-            raise ValueError(f"rack {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_rack(self, 
-                           site: str=None,
-                           name: str=None,
-                           status: Literal['active', 'reserved', 'deprecated']='active',
-                           tenant: str=None,
-                           u_height: int=None,
-                           facility: str=None,
-                        ):
-        
-        """
-        新增or update rack。
+        contact_id_response = self.get_contact_id(name=contact)
+        if contact_id_response.code != 0:
+            return contact_id_response
 
-        Args:
-            site: site 参数。
-            name: name 参数。
-            status: status 参数。
-            tenant: tenant 参数。
-            u_height: u_height 参数。
-            facility: facility 参数。
+        role_id_response = self.get_contact_role_id(name=role)
+        if role_id_response.code != 0:
+            return role_id_response
 
-        Returns:
-            Any: 返回值。
-        """
-        if status not in ['active', 'reserved', 'deprecated']:
-            raise ValueError(f"rack status {status} 不合法!")
-        
-        api_url = '/api/dcim/racks/'
-        data = {
-            "site": self.get_site_id(name=site),
-            "name": name,
-            "status": status,
-            "tenant": self.get_tenant_id(name=tenant),
-            "u_height": u_height,
-            "facility": facility
-        }
-        data = Parse.remove_dict_none_value(data)
-        rack_id = self.get_rack_id(name=name, tenant=tenant)
-        if rack_id:
-            update_response = requests.put(url=self.url + api_url + f"{rack_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"rack {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"rack {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"rack {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"rack {name} 创建成功!", data=create_response.json())
-    
-    def get_tags_id(self, name):
-        """
-        获取tags id。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/extras/tags/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"tag {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_tags(self, name: str, slug: str, color: str):
-        """
-        新增or update tags。
-
-        Args:
-            name: name 参数。
-            slug: slug 参数。
-            color: color 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/extras/tags/'
-        data = {
-            "name": name,
-            "slug": slug,
-            "color": color,
-        }
-        tag_id = self.get_tags_id(name=name)
-        if tag_id:
-            update_response = requests.put(url=self.url + api_url + f"{tag_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"tag {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"tag {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"tag {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"tag {name} 创建成功!", data=create_response.json())
-    
-    def get_interface_id(self, device, name):
-        """
-        获取interface id。
-
-        Args:
-            device: device 参数。
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/interfaces/'
-        params = {
-            "name": name,
-            "device": device
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        # print(response.json())
-        if name is None or device is None:
-            return None
-        elif response.json()['count'] > 1:
-            raise ValueError(f"interface {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_interfaces(self, 
-                                 name, 
-                                 device, 
-                                 interface_type: Literal['1000base-t', '2.5gbase-t', '1gfc-sfp', 'cisco-stackwise', 'other']='other',
-                                 tenant: str=None,
-                                 label: str=None,
-                                 poe_mode: Literal['pd', 'pse']=None,
-                                 poe_type: Literal['type2-ieee802.3at']=None,
-                                 description: str=None):
-        """
-        新增or update interfaces。
-
-        Args:
-            name: name 参数。
-            device: device 参数。
-            interface_type: interface_type 参数。
-            tenant: tenant 参数。
-            label: label 参数。
-            poe_mode: poe_mode 参数。
-            poe_type: poe_type 参数。
-            description: description 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/dcim/interfaces/'
-        data = {
-            "name": name,
-            "device": self.get_device_id(name=device, tenant_id=self.get_tenant_id(name=tenant)),
-            "type": interface_type,
-            "label": label,
-            # "status": status,
-            # "type": type,
-            # "mac_address": mac_address,
-            # "lag": lag,
-            "poe_mode": poe_mode,
-            "poe_type": poe_type,
-            "description": description,
-        }
-        data = Parse.remove_dict_none_value(data)
-        interface_id = self.get_interface_id(name=name, device=device)
-        if interface_id:
-            update_response = requests.put(url=self.url + api_url + f"{interface_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"interface {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:   
-                return ReturnResponse(code=0, msg=f"interface {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"interface {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"interface {name} 创建成功!", data=create_response.json())
-    
-    def get_contact_role_id(self, name):
-        """
-        获取contact role id。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/contact-roles/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"contact role {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_contact_role(self, name: str):
-        """
-        新增or update contact role。
-
-        Args:
-            name: name 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/contact-roles/'
-        slug = self._process_slug(name=name)
-        data = {
-            "name": name,
-            "slug": slug,
-        }
-        contact_role_id = self.get_contact_role_id(name=name)
-        if contact_role_id:
-            update_response = requests.put(url=self.url + api_url + f"{contact_role_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact role {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:   
-                return ReturnResponse(code=0, msg=f"contact role {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact role {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"contact role {name} 创建成功!", data=create_response.json())
-    
-    def is_contact_assignmentd(self, contact_id: int, object_type: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface'], role: str):
-        """
-        判断是否contact assignmentd。
-
-        Args:
-            contact_id: 资源 ID。
-            object_type: object_type 参数。
-            role: role 参数。
-
-        Returns:
-            bool: 是否满足条件。
-        """
-        api_url = '/api/tenancy/contact-assignments/'
-        params = {
-            "contact_id": contact_id,
+        payload = {
+            "contact": contact_id_response.data,
             "object_type": object_type,
-            # "object_type_id": object_type_id,
-            "role_id": role
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 0:
-            return True
-        
-    def get_contact_assignment_id(self, contact_id: int, object_type: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface'], role: str):
-        """
-        获取contact assignment id。
-
-        Args:
-            contact_id: 资源 ID。
-            object_type: object_type 参数。
-            role: role 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/contact-assignments/'
-        params = {
-            "contact_id": contact_id,
-            "object_type": object_type,
-            "role_id": role
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        return response.json()['results'][0]['id']
-    
-    def assign_contact_to_object(self, 
-                                 contact: str, 
-                                 object_type: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface'], 
-                                 object_name: str, 
-                                 role: str,
-                                 priority: Literal['primary', 'secondary', 'tertiary', 'inactive']='primary') -> ReturnResponse:
-        """
-        执行 assign contact to object 相关逻辑。
-
-        Args:
-            contact: contact 参数。
-            object_type: object_type 参数。
-            object_name: object_name 参数。
-            role: role 参数。
-            priority: priority 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/tenancy/contact-assignments/'
-        if object_type == 'dcim.site':
-            object_id = self.get_site_id(name=object_name)
-        elif object_type == 'dcim.location':
-            object_id = self.get_location_id(name=object_name)
-        elif object_type == 'dcim.rack':
-            object_id = self.get_rack_id(name=object_name)
-        elif object_type == 'dcim.device':
-            object_id = self.get_device_id(name=object_name)
-        elif object_type == 'dcim.interface':
-            object_id = self.get_interface_id(name=object_name, device=object_name)
-        else:
-            raise ValueError(f"object type {object_type} 不存在")
-        
-        contact_id = self.get_contact_id(name=contact)
-        
-        data = {
-            "contact": contact_id,
-            "object_type": object_type,
-            "object_id": object_id,
-            "role": self.get_contact_role_id(name=role),
+            "object_id": object_id_response.data,
+            "role": role_id_response.data,
             "priority": priority,
         }
-        is_contact_assignmentd = self.is_contact_assignmentd(contact_id=contact_id, object_type=object_type, role=self.get_contact_role_id(name=role))
 
-        if is_contact_assignmentd:
-            assign_id = self.get_contact_assignment_id(contact_id=contact_id, object_type=object_type, role=self.get_contact_role_id(name=role))
-            data['id'] = assign_id
-            update_response = requests.patch(url=self.url + api_url, headers=self.headers, data=json.dumps([data]), timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact {contact} 更新 {object_name} 的 {role} 失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"contact {contact} 更新 {object_name} 成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"contact {contact} 分配到 {object_name} 失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"contact {contact} 分配到 {object_name} 成功!", data=create_response.json())
-        
-    
-    def get_object_type(self):
-        """
-        获取object type。
+        exists_response = self.is_contact_assignmentd(
+            contact_id=contact_id_response.data,
+            object_type=object_type,
+            role=str(role_id_response.data),
+        )
+        if exists_response.code != 0:
+            return exists_response
 
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/extras/object-types/'
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout)
-        return response.json()['results']
-    
-    def get_object_type_id(self, name: Literal['dcim.site', 'dcim.location', 'dcim.rack', 'dcim.device', 'dcim.interface', 'dcim.device-type', 'dcim.manufacturer', 'dcim.virtual-chassis', 'dcim.cable', 'dcim.power-outlet', 'dcim.power-port', 'dcim.power-feed', 'dcim.power-panel', 'dcim.power-outlet-template', 'dcim.power-port-template', 'dcim.power-feed-template', 'dcim.power-panel-template']):
-        """
-        获取object type id。
+        if bool(exists_response.data):
+            assignment_id_response = self.get_contact_assignment_id(
+                contact_id=contact_id_response.data,
+                object_type=object_type,
+                role=str(role_id_response.data),
+            )
+            if assignment_id_response.code != 0:
+                return assignment_id_response
+            payload["id"] = assignment_id_response.data
+            response = self._request_with_retry(
+                "PATCH",
+                "/api/tenancy/contact-assignments/",
+                json_data=[payload],
+            )
+            if response.code != 0:
+                return self._fail(msg="contact-assignment update failed", data=response.data)
+            return self._ok(msg="contact-assignment updated", data=response.data)
 
-        Args:
-            name: name 参数。
+        response = self._request_with_retry(
+            "POST",
+            "/api/tenancy/contact-assignments/",
+            json_data=payload,
+        )
+        if response.code != 0:
+            return self._fail(msg="contact-assignment create failed", data=response.data)
+        return self._ok(msg="contact-assignment created", data=response.data)
 
-        Returns:
-            Any: 返回值。
-        """
-        api_url = '/api/extras/object-types/'
-        app_label, model = name.split('.')[0], name.split('.')[1]
-        params = {
-            "app_label": app_label,
-            "model": model
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"object type {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def get_site_id(self, name):
-        """
-        获取site id。
-
-        Args:
-            name: name 参数。
+    def get_object_type(self) -> ReturnResponse:
+        """Get all object types.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Object type list in ``data``.
         """
-        api_url = '/api/dcim/sites/'
-        params = {
-            "name": name
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if name is None:
-            return None
-        elif response.json()['count'] > 1:
-            raise ValueError(f"site {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_sites(self, name, slug, tenant):
-        # if status not in ['active', 'staging', 'planned', 'decommissioning', 'retired']:
-        #     raise ValueError(f"site status {status} 不合法!")
-        
-        """
-        新增or update sites。
+        response = self._request_with_retry("GET", "/api/extras/object-types/")
+        if response.code != 0:
+            return response
+
+        if isinstance(response.data, dict):
+            results = response.data.get("results")
+            if isinstance(results, list):
+                return self._ok(msg="object-types fetched", data=results)
+        return self._ok(msg="object-types fetched", data=response.data)
+
+    def get_object_type_id(
+        self,
+        name: Literal[
+            "dcim.site",
+            "dcim.location",
+            "dcim.rack",
+            "dcim.device",
+            "dcim.interface",
+            "dcim.device-type",
+            "dcim.manufacturer",
+            "dcim.virtual-chassis",
+            "dcim.cable",
+            "dcim.power-outlet",
+            "dcim.power-port",
+            "dcim.power-feed",
+            "dcim.power-panel",
+            "dcim.power-outlet-template",
+            "dcim.power-port-template",
+            "dcim.power-feed-template",
+            "dcim.power-panel-template",
+        ],
+    ) -> ReturnResponse:
+        """Get object type ID by app label and model.
 
         Args:
-            name: name 参数。
-            slug: slug 参数。
-            tenant: tenant 参数。
+            name: Object type full name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Object type ID in ``data``.
         """
-        api_url = '/api/dcim/sites/'
-        data = {
-            "name": name,
-            "slug": slug,
-            "tenant": self.get_tenant_id(tenant)
-        }
-        data = Parse.remove_dict_none_value(data)
-        site_id = self.get_site_id(name=name)
-        if site_id:
-            update_response = requests.put(url=self.url + api_url + f"{site_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"site {name} 更新失败! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"site {name} 已存在, 更新成功!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"site {name} 创建失败! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"site {name} 创建成功!", data=create_response.json())
-    
-    def get_devices(self, tenant: str=None, device_type: str=None, manufacturer: str=None):
-        """
-        获取devices。
+        if "." not in name:
+            return self._fail(msg=f"object type [{name}] is invalid")
+        app_label, model = name.split(".", 1)
+        return self._query_single_id(
+            "/api/extras/object-types/",
+            {"app_label": app_label, "model": model},
+            "object-type",
+        )
+
+    def add_or_update_sites(self, name: str, slug: str, tenant: Optional[str]) -> ReturnResponse:
+        """Create or update a site.
 
         Args:
-            tenant: tenant 参数。
-            device_type: device_type 参数。
-            manufacturer: manufacturer 参数。
+            name: Site name.
+            slug: Site slug.
+            tenant: Tenant name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Upsert result.
         """
-        url = f"{self.url}/api/dcim/devices/"
-        params = {
-            "tenant": tenant,
-            "device_type": device_type,
-            "manufacturer_id": self.get_manufacturer_id(name=manufacturer),
-            "limit": 0
-        }
-        params = Parse.remove_dict_none_value(params)
-        results = []
-        while url:
-            r = requests.get(url=url, headers=self.headers, timeout=self.timeout, params=params)
-            data = r.json()
-            results.extend(data.get("results", []))
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
 
-            url = data.get("next")   # next 自带 offset/limit
-            params = None            # next 已经包含 query 了，别再重复传 params
-        return results
-    
-    def get_power_port_id(self, device, name):
-        """
-        获取power port id。
+        site_id_response = self.get_site_id(name=name)
+        if site_id_response.code != 0:
+            return site_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "name": name,
+                "slug": slug,
+                "tenant": tenant_id_response.data,
+            }
+        )
+        return self._upsert_resource(
+            "/api/dcim/sites/",
+            site_id_response.data,
+            payload,
+            "site",
+            name,
+        )
+
+    def get_devices(
+        self,
+        tenant: Optional[str] = None,
+        device_type: Optional[str] = None,
+        manufacturer: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Get device list with pagination.
 
         Args:
-            device: device 参数。
-            name: name 参数。
+            tenant: Tenant filter.
+            device_type: Device type filter.
+            manufacturer: Manufacturer filter.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Device list in ``data``.
         """
-        api_url = '/api/dcim/power-ports/'
-        params = {
-            "name": name,
-            "device": device
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"power port {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_power_ports(self, 
-                                  device, 
-                                  name, 
-                                  power_type: Literal['iec-60320-c14', 'other'],
-                                  label: str=None,
-                                  maximum_draw: int=None,
-                                  allocated_draw: int=None,
-                                  mark_connected: bool=True,
-                                  description: str=None,
-                            ):
-        '''
-        添加/更新电源端口
+        manufacturer_id_response = self.get_manufacturer_id(name=manufacturer)
+        if manufacturer_id_response.code != 0:
+            return manufacturer_id_response
+
+        params = Parse.remove_dict_none_value(
+            {
+                "tenant": tenant,
+                "device_type": device_type,
+                "manufacturer_id": manufacturer_id_response.data,
+                "limit": 0,
+            }
+        )
+
+        results: List[Dict[str, Any]] = []
+        next_url: Optional[str] = "/api/dcim/devices/"
+        next_params: Optional[Dict[str, Any]] = params
+
+        while next_url:
+            response = self._request_with_retry("GET", next_url, params=next_params)
+            if response.code != 0:
+                return response
+
+            if not isinstance(response.data, dict):
+                return self._fail(msg="device list payload is invalid", data=response.data)
+
+            page_results = response.data.get("results")
+            if isinstance(page_results, list):
+                results.extend([item for item in page_results if isinstance(item, dict)])
+
+            raw_next = response.data.get("next")
+            next_url = raw_next if isinstance(raw_next, str) and raw_next else None
+            next_params = None
+
+        return self._ok(msg="devices fetched", data=results)
+
+    def get_power_port_id(self, device: Optional[str], name: Optional[str]) -> ReturnResponse:
+        """Get power port ID by device and name.
 
         Args:
-            device (str): 设备名称
-            name (str): 电源端口名称
-            power_type (Literal['iec-60320-c14', 'other']): 电源类型
-            label (str, optional): 标签. Defaults to None.
-            maximum_draw (int, optional): 设备满载最大功率
-            allocated_draw (int, optional): 计划/分配”的功率, 如果不知道, 就和 maximum_draw 一样
-            mark_connected (bool, optional): 是否标记为已连接. Defaults to True.
-            description (str, optional): 描述. Defaults to None.
-        '''
-        api_url = '/api/dcim/power-ports/'
-        data = {
-            "device": self.get_device_id(name=device),
-            "name": name,
-            "type": power_type,
-            "label": label,
-            "maximum_draw": maximum_draw,
-            "allocated_draw": allocated_draw,
-            "mark_connected": mark_connected,
-            "description": description,
-        }
-        data = Parse.remove_dict_none_value(data)
-        power_port_id = self.get_power_port_id(name=name, device=device)
-        if power_port_id:
-            update_response = requests.put(url=self.url + api_url + f"{power_port_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"power port [{device} {name}] updated failed! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"power port [{device} {name}] exists, updated successfully!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"power port [{device} {name}] created failed! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"power port [{device} {name}] created successfully!", data=create_response.json())
-    
-    def get_console_port_id(self, device, name):
-        """
-        获取console port id。
-
-        Args:
-            device: device 参数。
-            name: name 参数。
+            device: Device name.
+            name: Power port name.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Power port ID in ``data``.
         """
-        api_url = '/api/dcim/console-ports/'
-        params = {
-            "name": name,
-            "device": device
-        }
-        response = requests.get(url=self.url + api_url, headers=self.headers, timeout=self.timeout, params=params)
-        if response.json()['count'] > 1:
-            raise ValueError(f"console port {name} 存在多个结果")
-        elif response.json()['count'] == 0:
-            return None
-        else:
-            return response.json()['results'][0]['id']
-    
-    def add_or_update_console_port(self, device, name, port_type: Literal['rj-45']='rj-45', description: str=None):
-        """
-        新增or update console port。
+        return self._query_single_id(
+            "/api/dcim/power-ports/",
+            {"name": name, "device": device},
+            "power-port",
+        )
+
+    def add_or_update_power_ports(
+        self,
+        device: str,
+        name: str,
+        power_type: Literal["iec-60320-c14", "other"],
+        label: Optional[str] = None,
+        maximum_draw: Optional[int] = None,
+        allocated_draw: Optional[int] = None,
+        mark_connected: bool = True,
+        description: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a power port.
 
         Args:
-            device: device 参数。
-            name: name 参数。
-            port_type: port_type 参数。
-            description: description 参数。
+            device: Device name.
+            name: Power port name.
+            power_type: Power type.
+            label: Label value.
+            maximum_draw: Maximum power draw.
+            allocated_draw: Allocated power draw.
+            mark_connected: Connected flag.
+            description: Description text.
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: Upsert result.
         """
-        api_url = '/api/dcim/console-ports/'
-        data = {
-            "device": self.get_device_id(name=device),
-            "name": name,
-            "type": port_type,
-            "description": description,
-        }
-        data = Parse.remove_dict_none_value(data)
-        console_port_id = self.get_console_port_id(name=name, device=device)
-        if console_port_id:
-            update_response = requests.put(url=self.url + api_url + f"{console_port_id}/", headers=self.headers, json=data, timeout=self.timeout)
-            if update_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"console port [{device} {name}] updated failed! {update_response.json()}", data=update_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"console port [{device} {name}] exists, updated successfully!", data=update_response.json())
-        else:
-            create_response = requests.post(url=self.url + api_url, headers=self.headers, json=data, timeout=self.timeout)
-            if create_response.status_code > 210:
-                return ReturnResponse(code=1, msg=f"console port [{device} {name}] created failed! {create_response.json()}", data=create_response.json())
-            else:
-                return ReturnResponse(code=0, msg=f"console port [{device} {name}] created successfully!", data=create_response.json())
+        device_id_response = self.get_device_id(name=device)
+        if device_id_response.code != 0:
+            return device_id_response
+
+        power_port_id_response = self.get_power_port_id(name=name, device=device)
+        if power_port_id_response.code != 0:
+            return power_port_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "device": device_id_response.data,
+                "name": name,
+                "type": power_type,
+                "label": label,
+                "maximum_draw": maximum_draw,
+                "allocated_draw": allocated_draw,
+                "mark_connected": mark_connected,
+                "description": description,
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/dcim/power-ports/",
+            power_port_id_response.data,
+            payload,
+            "power-port",
+            f"{device}:{name}",
+        )
+
+    def get_console_port_id(self, device: Optional[str], name: Optional[str]) -> ReturnResponse:
+        """Get console port ID by device and name.
+
+        Args:
+            device: Device name.
+            name: Console port name.
+
+        Returns:
+            ReturnResponse: Console port ID in ``data``.
+        """
+        return self._query_single_id(
+            "/api/dcim/console-ports/",
+            {"name": name, "device": device},
+            "console-port",
+        )
+
+    def add_or_update_console_port(
+        self,
+        device: str,
+        name: str,
+        port_type: Literal["rj-45"] = "rj-45",
+        description: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Create or update a console port.
+
+        Args:
+            device: Device name.
+            name: Console port name.
+            port_type: Console port type.
+            description: Description text.
+
+        Returns:
+            ReturnResponse: Upsert result.
+        """
+        device_id_response = self.get_device_id(name=device)
+        if device_id_response.code != 0:
+            return device_id_response
+
+        console_port_id_response = self.get_console_port_id(name=name, device=device)
+        if console_port_id_response.code != 0:
+            return console_port_id_response
+
+        payload = Parse.remove_dict_none_value(
+            {
+                "device": device_id_response.data,
+                "name": name,
+                "type": port_type,
+                "description": description,
+            }
+        )
+
+        return self._upsert_resource(
+            "/api/dcim/console-ports/",
+            console_port_id_response.data,
+            payload,
+            "console-port",
+            f"{device}:{name}",
+        )

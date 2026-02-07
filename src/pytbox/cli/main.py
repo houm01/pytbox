@@ -6,6 +6,7 @@ Pytbox 主命令行入口
 import click
 from .categraf import categraf_group
 from .commands.vm import vm_group
+from .network.commands import network_group
 
 
 @click.group()
@@ -18,6 +19,7 @@ def main():
 # 注册子命令组
 main.add_command(categraf_group, name='categraf')
 main.add_command(vm_group, name='vm')
+main.add_command(network_group, name='network')
 
 
 if __name__ == "__main__":

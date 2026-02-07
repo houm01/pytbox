@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
+"""Basic Netbox client smoke tests."""
 
-from pytbox.base import netbox
+from pytbox.netbox.client import NetboxClient
 
 
-r = netbox.get_org_sites_regions()
-print(r)
+def test_get_update_comments_returns_text() -> None:
+    """Ensure pure helper returns plain text."""
+    client = NetboxClient(url="https://netbox.example.com", token="token")
+    result = client.get_update_comments(source="unit-test")
+    assert isinstance(result, str)
+    assert "Source: unit-test" in result
