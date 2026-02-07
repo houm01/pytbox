@@ -251,6 +251,58 @@ def test_network_backup_returns_exit_1_on_failure(
     )
 
     assert result.exit_code == 1
+    assert "Backup error: failed" in result.output
+
+
+def test_network_backup_prints_failed_reasons(
+    monkeypatch: Any,
+) -> None:
+    """CLI should print per-target reason on backup failure."""
+    captured_configs: List[Dict[str, Any]] = []
+    fake_response = ReturnResponse.fail(
+        code=1,
+        msg="部分设备备份失败",
+        data={
+            "success_count": 0,
+            "failed_count": 1,
+            "success": [],
+            "failed": [
+                {
+                    "ip": "10.0.0.9",
+                    "os": "cisco",
+                    "reason": "未安装 netmiko，请先安装后再执行网络设备备份",
+                }
+            ],
+        },
+    )
+    fake_service = _FakeBackupService(captured_configs, fake_response)
+    monkeypatch.setattr(
+        "pytbox.cli.network.commands.NetworkBackupService",
+        lambda: fake_service,
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "network",
+            "backup",
+            "--os",
+            "cisco",
+            "--ip",
+            "10.0.0.9",
+            "--protocol",
+            "ssh",
+            "--username",
+            "ops",
+            "--password",
+            "x",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Backup error: 部分设备备份失败" in result.output
+    assert "Failed target ip=10.0.0.9 os=cisco reason=未安装 netmiko，请先安装后再执行网络设备备份" in result.output
 
 
 def test_network_backup_config_plus_direct_uses_config_password_when_absent(

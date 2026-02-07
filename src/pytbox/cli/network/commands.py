@@ -186,4 +186,17 @@ def backup_command(
 
     click.echo(f"Backup finished. success={success_count}, failed={failed_count}")
     if response.code != 0:
+        click.echo(f"Backup error: {response.msg}", err=True)
+        failed_items = summary.get("failed", []) if isinstance(summary, dict) else []
+        if isinstance(failed_items, list):
+            for item in failed_items:
+                if not isinstance(item, dict):
+                    continue
+                ip_value = str(item.get("ip", "unknown"))
+                os_value = str(item.get("os", "unknown"))
+                reason_value = str(item.get("reason", "unknown error"))
+                click.echo(
+                    f"Failed target ip={ip_value} os={os_value} reason={reason_value}",
+                    err=True,
+                )
         raise SystemExit(1)
