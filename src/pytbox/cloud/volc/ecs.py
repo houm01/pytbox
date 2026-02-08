@@ -1,53 +1,128 @@
-from typing import Any, Dict, List, Optional
+"""Volc ECS resource operations."""
 
-import volcenginesdkecs  # 来自 volcengine-python-sdk :contentReference[oaicite:5]{index=5}
-from ...utils.response import ReturnResponse
+from __future__ import annotations
+
+from typing import Any
+
+import volcenginesdkecs
+
+from ...schemas.response import ReturnResponse
 
 
 class ECSResource:
-    """
-    ECSResource 类。
+    """Volc ECS read-only resource wrapper."""
 
-    用于 ECS Resource 相关能力的封装。
-    """
-    def __init__(self, client):
-        """
-        初始化对象。
+    def __init__(self, client: Any) -> None:
+        """Initialize resource.
 
         Args:
-            client: client 参数。
+            client: VolcClient instance.
         """
         self._c = client
         self._api = self._c.ecs_api()
 
+    @staticmethod
+    def _response_to_dict(response: Any) -> dict[str, Any]:
+        """Convert SDK response to dict safely.
+
+        Args:
+            response: SDK response object.
+
+        Returns:
+            dict[str, Any]: Response dictionary.
+        """
+        if hasattr(response, "to_dict"):
+            data = response.to_dict()
+            return data if isinstance(data, dict) else {}
+        if isinstance(response, dict):
+            return response
+        return {}
+
+    @staticmethod
+    def _extract_instances(data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract ECS instances from variable SDK payload shapes.
+
+        Args:
+            data: SDK response dictionary.
+
+        Returns:
+            list[dict[str, Any]]: Instance list.
+        """
+        candidates = [
+            data.get("instances"),
+            data.get("Instances"),
+            (data.get("data") or {}).get("instances") if isinstance(data.get("data"), dict) else None,
+            (data.get("result") or {}).get("instances") if isinstance(data.get("result"), dict) else None,
+        ]
+        for candidate in candidates:
+            if isinstance(candidate, list):
+                return [item for item in candidate if isinstance(item, dict)]
+        return []
+
     def list(
         self,
         *,
-        region: Optional[str] = None,
+        region: str | None = None,
         max_results: int = 100,
-        **kwargs,
+        **kwargs: Any,
     ) -> ReturnResponse:
+        """List ECS instances.
+
+        Args:
+            region: Optional region override.
+            max_results: Maximum result count.
+            **kwargs: Additional request parameters.
+
+        Returns:
+            ReturnResponse: ``data`` is list of instance dicts.
         """
-        查询 ECS 实例列表（原样返回：list[dict]）
+        with self._c.use_region(region):
+            request = volcenginesdkecs.DescribeInstancesRequest(max_results=max_results, **kwargs)
+            response = self._c.call("ecs_list", lambda: self._api.describe_instances(request))
+        data = self._response_to_dict(response)
+        instances = self._extract_instances(data)
+        return ReturnResponse(code=0, msg="success", data=instances)
 
-        规则：
-          - region 传了就用传入的
-          - 不传就用实例化 Volc 的默认 region
+    def get_instance(
+        self,
+        instance_id: str,
+        *,
+        region: str | None = None,
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """Get a single ECS instance by id.
 
-        说明：
-          volcengine-python-sdk 的示例里用的是 describe_instances + DescribeInstancesRequest :contentReference[oaicite:6]{index=6}
+        Args:
+            instance_id: ECS instance id.
+            region: Optional region override.
+            **kwargs: Additional request parameters.
+
+        Returns:
+            ReturnResponse: ``data`` is instance dict or ``None``.
         """
-        # region 覆盖：临时改 configuration.region（只影响这次调用）
-        if region:
-            self._c.set_region(region)
-        else:
-            self._c.api_client.configuration.region = self._c.cfg.region  # type: ignore[attr-defined]
+        request_kwargs = dict(kwargs)
+        request_kwargs.setdefault("instance_ids", [instance_id])
+        response = self.list(region=region, max_results=1, **request_kwargs)
+        instances = response.data if isinstance(response.data, list) else []
+        return ReturnResponse(code=response.code, msg=response.msg, data=instances[0] if instances else None)
 
-        req = volcenginesdkecs.DescribeInstancesRequest(
-            max_results=max_results,
-            **kwargs,
-        )
+    def list_instance_ids(self, *, region: str | None = None, **kwargs: Any) -> ReturnResponse:
+        """List ECS instance ids.
 
-        resp = self._c.call("ecs_list", lambda: self._api.describe_instances(req))
-        data = resp.to_dict()
-        return ReturnResponse(code=0, msg='success', data=data['instances'])
+        Args:
+            region: Optional region override.
+            **kwargs: Additional list filters.
+
+        Returns:
+            ReturnResponse: ``data`` is list of ids.
+        """
+        response = self.list(region=region, **kwargs)
+        instances = response.data if isinstance(response.data, list) else []
+        instance_ids: list[str] = []
+        for item in instances:
+            if not isinstance(item, dict):
+                continue
+            value = item.get("instance_id") or item.get("InstanceId") or item.get("id")
+            if value:
+                instance_ids.append(str(value))
+        return ReturnResponse(code=response.code, msg=response.msg, data=instance_ids)

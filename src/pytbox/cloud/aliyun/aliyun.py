@@ -1,31 +1,43 @@
+"""Aliyun cloud module entrypoint."""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-from pytbox.cloud.aliyun.client import AliyunClient, AliyunCreds, AliyunConfig
-from pytbox.cloud.aliyun.ecs import ECSResource
+from pytbox.cloud.aliyun.client import AliyunClient, AliyunConfig, AliyunCreds
 from pytbox.cloud.aliyun.cms import CMSResource
+from pytbox.cloud.aliyun.ecs import ECSResource
 from pytbox.cloud.aliyun.ram import RAMResource
 
 
 @dataclass(frozen=True)
 class AliyunOptions:
-    """
-    AliyunOptions 类。
+    """Aliyun runtime options.
 
-    用于 Aliyun Options 相关能力的封装。
+    Attributes:
+        timeout_s: Timeout in seconds for each SDK call.
+        retries: Retry count for retryable failures. Capped to 3.
+        retry_backoff_s: Base backoff seconds for linear retry sleep.
+        ecs_endpoint: Optional custom ECS endpoint.
+        cms_endpoint: Optional custom CMS endpoint.
+        ram_endpoint: Optional custom RAM endpoint.
     """
+
     timeout_s: float = 8.0
-    retries: int = 1
+    retries: int = 2
     retry_backoff_s: float = 0.5
     ecs_endpoint: str | None = None
     cms_endpoint: str | None = None
+    ram_endpoint: str | None = None
 
 
 class Aliyun:
-    """
-    使用方式：
-        ali = Aliyun(ak="..", sk="..", region="cn-hangzhou")
+    """Aliyun resource aggregator.
+
+    Example:
+        ali = Aliyun(ak="ak", sk="sk", region="cn-hangzhou")
         ali.ecs.list()
-        ali.cms.cpu_utilization(...)
+        ali.cms.cpu_utilization(instance_id="i-xx", start_ts=1, end_ts=2)
     """
 
     def __init__(
@@ -36,29 +48,30 @@ class Aliyun:
         region: str,
         options: AliyunOptions | None = None,
     ) -> None:
-        """
-        初始化对象。
+        """Initialize Aliyun facade.
 
         Args:
-            ak: ak 参数。
-            sk: sk 参数。
-            region: region 参数。
-            options: options 参数。
+            ak: Aliyun access key.
+            sk: Aliyun secret key.
+            region: Default region id.
+            options: Runtime options.
         """
         opt = options or AliyunOptions()
+        retries = min(max(opt.retries, 0), 3)
+        cms_endpoint = opt.cms_endpoint or f"metrics.{region}.aliyuncs.com"
 
         self._client = AliyunClient(
             creds=AliyunCreds(ak=ak, sk=sk),
             cfg=AliyunConfig(
                 region=region,
                 timeout_s=opt.timeout_s,
-                retries=opt.retries,
+                retries=retries,
                 retry_backoff_s=opt.retry_backoff_s,
                 ecs_endpoint=opt.ecs_endpoint,
-                cms_endpoint=f'metrics.{region}.aliyuncs.com',
+                cms_endpoint=cms_endpoint,
+                ram_endpoint=opt.ram_endpoint,
             ),
         )
-
         self.ecs = ECSResource(self._client)
         self.cms = CMSResource(self._client)
         self.ram = RAMResource(self._client)

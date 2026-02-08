@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import threading
 import time
 import uuid
-from typing import Any, Dict, List, Literal, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple
 
 import pynetbox
 import requests
@@ -55,6 +58,8 @@ class NetboxClient:
             "Authorization": f"Token {self.token}",
             "Content-Type": "application/json",
         }
+        self._id_lookup_cache: Dict[str, Any] = {}
+        self._id_lookup_cache_lock = threading.Lock()
         self.pynetbox = pynetbox.api(self.url, token=self.token) if self.url else None
 
     def _ok(self, msg: str, data: Any = None) -> ReturnResponse:
@@ -248,6 +253,19 @@ class NetboxClient:
             return payload["count"]
         return len(results)
 
+    def _build_lookup_cache_key(self, api_url: str, params: Dict[str, Any]) -> str:
+        """Build a cache key for single-ID lookups.
+
+        Args:
+            api_url: API endpoint path.
+            params: Query parameters.
+
+        Returns:
+            str: Stable cache key.
+        """
+        serialized_params = json.dumps(params, sort_keys=True, ensure_ascii=False, default=str)
+        return f"{api_url}?{serialized_params}"
+
     def _query_single_id(
         self,
         api_url: str,
@@ -268,6 +286,12 @@ class NetboxClient:
         if not cleaned_params:
             return self._ok(msg=f"{resource_name} not found", data=None)
 
+        cache_key = self._build_lookup_cache_key(api_url=api_url, params=cleaned_params)
+        with self._id_lookup_cache_lock:
+            cached_id = self._id_lookup_cache.get(cache_key)
+        if cached_id is not None:
+            return self._ok(msg=f"{resource_name} found", data=cached_id)
+
         response = self._request_with_retry("GET", api_url, params=cleaned_params)
         if response.code != 0:
             return response
@@ -281,7 +305,11 @@ class NetboxClient:
             )
         if count == 0:
             return self._ok(msg=f"{resource_name} not found", data=None)
-        return self._ok(msg=f"{resource_name} found", data=results[0].get("id"))
+        resolved_id = results[0].get("id")
+        if resolved_id is not None:
+            with self._id_lookup_cache_lock:
+                self._id_lookup_cache[cache_key] = resolved_id
+        return self._ok(msg=f"{resource_name} found", data=resolved_id)
 
     def _upsert_resource(
         self,
@@ -317,6 +345,99 @@ class NetboxClient:
             msg=f"{resource_name} [{resource_key}] {action} successfully",
             data=response.data,
         )
+
+    def _run_parallel_batch(
+        self,
+        target: str,
+        items: List[Dict[str, Any]],
+        dedupe_key_getter: Callable[[Dict[str, Any]], str],
+        worker: Callable[[Dict[str, Any]], ReturnResponse],
+        max_workers: int,
+    ) -> ReturnResponse:
+        """Run batch tasks in parallel and aggregate outcomes.
+
+        Args:
+            target: Batch target for logging.
+            items: Batch input items.
+            dedupe_key_getter: Function producing a uniqueness key per item.
+            worker: Per-item executor.
+            max_workers: Maximum worker threads.
+
+        Returns:
+            ReturnResponse: Aggregated execution result.
+        """
+        if max_workers < 1:
+            return self._fail(msg="max_workers must be >= 1")
+
+        batch_task_id = uuid.uuid4().hex[:8]
+        start_ts = time.monotonic()
+        seen_keys: Set[str] = set()
+        indexed_work_items: List[Tuple[int, str, Dict[str, Any]]] = []
+        indexed_results: Dict[int, Dict[str, Any]] = {}
+
+        for index, item in enumerate(items):
+            try:
+                item_key = dedupe_key_getter(item)
+            except Exception as exc:
+                indexed_results[index] = {
+                    "index": index,
+                    "key": f"index:{index}",
+                    "code": 1,
+                    "msg": f"{target} item key error",
+                    "data": {"item": item, "err": str(exc)},
+                }
+                continue
+            if item_key in seen_keys:
+                indexed_results[index] = {
+                    "index": index,
+                    "key": item_key,
+                    "code": 1,
+                    "msg": f"{target} duplicate item",
+                    "data": {"item": item},
+                }
+                continue
+            seen_keys.add(item_key)
+            indexed_work_items.append((index, item_key, item))
+
+        worker_count = min(max_workers, len(indexed_work_items))
+        if worker_count > 0:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                future_to_item = {
+                    executor.submit(worker, item): (index, item_key, item)
+                    for index, item_key, item in indexed_work_items
+                }
+                for future in as_completed(future_to_item):
+                    index, item_key, item = future_to_item[future]
+                    try:
+                        response = future.result()
+                    except Exception as exc:  # pragma: no cover - safety fallback
+                        response = self._fail(
+                            msg=f"{target} item exception",
+                            data={"err": str(exc), "item": item},
+                        )
+                    indexed_results[index] = {
+                        "index": index,
+                        "key": item_key,
+                        "code": response.code,
+                        "msg": response.msg,
+                        "data": response.data,
+                    }
+
+        ordered_results = [indexed_results[index] for index in sorted(indexed_results)]
+        success_count = sum(1 for result in ordered_results if result["code"] == 0)
+        failed_count = len(ordered_results) - success_count
+        summary = {
+            "total": len(items),
+            "success": success_count,
+            "failed": failed_count,
+            "results": ordered_results,
+        }
+
+        batch_result = "ok" if failed_count == 0 else "partial_fail"
+        self._log_step(batch_task_id, target, batch_result, start_ts)
+        if failed_count > 0:
+            return self._fail(msg=f"{target} completed with failures", data=summary)
+        return self._ok(msg=f"{target} completed", data=summary)
 
     def get_update_comments(self, source: str = "") -> str:
         """Generate update comment text.
@@ -1242,6 +1363,219 @@ class NetboxClient:
         if response.code != 0:
             return self._fail(msg=f"device [{device_name}] update failed", data=response.data)
         return self._ok(msg=f"device [{device_name}] updated", data=response.data)
+
+    def update_device_fields(
+        self,
+        name: str,
+        fields: Dict[str, Any],
+        tenant: Optional[str] = None,
+    ) -> ReturnResponse:
+        """Update selected fields on a device with PATCH.
+
+        Args:
+            name: Device name.
+            fields: Fields to patch.
+            tenant: Optional tenant name.
+
+        Returns:
+            ReturnResponse: Update result.
+        """
+        if not fields:
+            return self._fail(msg=f"device [{name}] fields are required")
+
+        payload = Parse.remove_dict_none_value(fields)
+        if not payload:
+            return self._fail(msg=f"device [{name}] fields are required")
+
+        tenant_id_response = self.get_tenant_id(name=tenant)
+        if tenant_id_response.code != 0:
+            return tenant_id_response
+
+        device_id_response = self.get_device_id(
+            name=name,
+            tenant_id=tenant_id_response.data,
+        )
+        if device_id_response.code != 0:
+            return device_id_response
+        if device_id_response.data is None:
+            return self._fail(msg=f"device [{name}] not found")
+
+        response = self._request_with_retry(
+            "PATCH",
+            f"/api/dcim/devices/{device_id_response.data}/",
+            json_data=payload,
+        )
+        if response.code != 0:
+            return self._fail(msg=f"device [{name}] patch failed", data=response.data)
+        return self._ok(msg=f"device [{name}] patched", data=response.data)
+
+    def bulk_update_device_fields(
+        self,
+        updates: List[Dict[str, Any]],
+        max_workers: int = 5,
+    ) -> ReturnResponse:
+        """Patch device fields in parallel.
+
+        Args:
+            updates: List of update items, each containing ``name``, ``tenant``,
+                and ``fields`` keys.
+            max_workers: Maximum worker threads.
+
+        Returns:
+            ReturnResponse: Aggregated batch result.
+        """
+
+        def dedupe_key_getter(item: Dict[str, Any]) -> str:
+            if not isinstance(item, dict):
+                return str(item)
+            name = item.get("name")
+            tenant = item.get("tenant")
+            normalized_name = name.strip() if isinstance(name, str) else str(name)
+            normalized_tenant = tenant.strip() if isinstance(tenant, str) else str(tenant)
+            return f"{normalized_name}|{normalized_tenant}"
+
+        def worker(item: Dict[str, Any]) -> ReturnResponse:
+            if not isinstance(item, dict):
+                return self._fail(
+                    msg="bulk_update_device_fields item must be dict",
+                    data={"item": item},
+                )
+            allowed_keys = {"name", "tenant", "fields"}
+            extra_keys = sorted(set(item.keys()) - allowed_keys)
+            if extra_keys:
+                return self._fail(
+                    msg="bulk_update_device_fields item has unsupported keys",
+                    data={"item": item, "unsupported_keys": extra_keys},
+                )
+
+            raw_name = item.get("name")
+            if not isinstance(raw_name, str) or not raw_name.strip():
+                return self._fail(
+                    msg="bulk_update_device_fields item name is required",
+                    data={"item": item},
+                )
+            name = raw_name.strip()
+
+            fields = item.get("fields")
+            if not isinstance(fields, dict) or not fields:
+                return self._fail(
+                    msg=f"device [{name}] fields are required",
+                    data={"item": item},
+                )
+
+            tenant = item.get("tenant")
+            if tenant is not None and not isinstance(tenant, str):
+                return self._fail(
+                    msg=f"device [{name}] tenant must be string or None",
+                    data={"item": item},
+                )
+            if isinstance(tenant, str):
+                tenant = tenant.strip() or None
+
+            return self.update_device_fields(name=name, fields=fields, tenant=tenant)
+
+        return self._run_parallel_batch(
+            target="bulk_update_device_fields",
+            items=updates,
+            dedupe_key_getter=dedupe_key_getter,
+            worker=worker,
+            max_workers=max_workers,
+        )
+
+    def bulk_add_or_update_interfaces(
+        self,
+        interfaces: List[Dict[str, Any]],
+        max_workers: int = 5,
+    ) -> ReturnResponse:
+        """Create or update interfaces in parallel.
+
+        Args:
+            interfaces: List of interface items compatible with
+                ``add_or_update_interfaces`` arguments.
+            max_workers: Maximum worker threads.
+
+        Returns:
+            ReturnResponse: Aggregated batch result.
+        """
+
+        def dedupe_key_getter(item: Dict[str, Any]) -> str:
+            if not isinstance(item, dict):
+                return str(item)
+            device = item.get("device")
+            name = item.get("name")
+            tenant = item.get("tenant")
+            normalized_device = device.strip() if isinstance(device, str) else str(device)
+            normalized_name = name.strip() if isinstance(name, str) else str(name)
+            normalized_tenant = tenant.strip() if isinstance(tenant, str) else str(tenant)
+            return f"{normalized_device}|{normalized_name}|{normalized_tenant}"
+
+        def worker(item: Dict[str, Any]) -> ReturnResponse:
+            if not isinstance(item, dict):
+                return self._fail(
+                    msg="bulk_add_or_update_interfaces item must be dict",
+                    data={"item": item},
+                )
+            allowed_keys = {
+                "name",
+                "device",
+                "interface_type",
+                "tenant",
+                "label",
+                "poe_mode",
+                "poe_type",
+                "description",
+            }
+            extra_keys = sorted(set(item.keys()) - allowed_keys)
+            if extra_keys:
+                return self._fail(
+                    msg="bulk_add_or_update_interfaces item has unsupported keys",
+                    data={"item": item, "unsupported_keys": extra_keys},
+                )
+
+            raw_device = item.get("device")
+            if not isinstance(raw_device, str) or not raw_device.strip():
+                return self._fail(
+                    msg="bulk_add_or_update_interfaces item device is required",
+                    data={"item": item},
+                )
+
+            raw_name = item.get("name")
+            if not isinstance(raw_name, str) or not raw_name.strip():
+                return self._fail(
+                    msg="bulk_add_or_update_interfaces item name is required",
+                    data={"item": item},
+                )
+
+            tenant = item.get("tenant")
+            if tenant is not None and not isinstance(tenant, str):
+                return self._fail(
+                    msg="bulk_add_or_update_interfaces item tenant must be string or None",
+                    data={"item": item},
+                )
+            if isinstance(tenant, str):
+                tenant = tenant.strip() or None
+
+            kwargs = Parse.remove_dict_none_value(
+                {
+                    "name": raw_name.strip(),
+                    "device": raw_device.strip(),
+                    "interface_type": item.get("interface_type"),
+                    "tenant": tenant,
+                    "label": item.get("label"),
+                    "poe_mode": item.get("poe_mode"),
+                    "poe_type": item.get("poe_type"),
+                    "description": item.get("description"),
+                }
+            )
+            return self.add_or_update_interfaces(**kwargs)
+
+        return self._run_parallel_batch(
+            target="bulk_add_or_update_interfaces",
+            items=interfaces,
+            dedupe_key_getter=dedupe_key_getter,
+            worker=worker,
+            max_workers=max_workers,
+        )
 
     def get_device_role_id(self, name: Optional[str]) -> ReturnResponse:
         """Get device role ID by name.

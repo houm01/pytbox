@@ -1,106 +1,74 @@
-class PytboxError(Exception):
-    """
-    PytboxError 类。
+"""Volc cloud error mapping."""
 
-    用于 Pytbox Error 相关能力的封装。
-    """
-    pass
+from __future__ import annotations
+
+import json
+
+
+class PytboxError(Exception):
+    """Base cloud error."""
 
 
 class AuthError(PytboxError):
-    """
-    AuthError 类。
-
-    用于 Auth Error 相关能力的封装。
-    """
-    pass
+    """Authentication failure."""
 
 
 class PermissionError(PytboxError):
-    """
-    PermissionError 类。
-
-    用于 Permission Error 相关能力的封装。
-    """
-    pass
+    """Permission denied."""
 
 
 class ThrottledError(PytboxError):
-    """
-    ThrottledError 类。
-
-    用于 Throttled Error 相关能力的封装。
-    """
-    pass
+    """Request throttled by upstream."""
 
 
 class TimeoutError(PytboxError):
-    """
-    TimeoutError 类。
-
-    用于 Timeout Error 相关能力的封装。
-    """
-    pass
+    """Request timeout."""
 
 
 class UpstreamError(PytboxError):
-    """
-    UpstreamError 类。
+    """Unknown upstream error."""
 
-    用于 Upstream Error 相关能力的封装。
-    """
-    pass
 
 class InvalidRequest(PytboxError):
-    """
-    InvalidRequest 类。
-
-    用于 Invalid Request 相关能力的封装。
-    """
-    pass
+    """Bad request from client input."""
 
 
 def map_volc_exception(action: str, e: Exception) -> Exception:
-    """
-    映射volc exception。
+    """Map Volc SDK errors to pytbox cloud errors.
 
     Args:
-        action: action 参数。
-        e: e 参数。
+        action: Action name for contextual message.
+        e: Original raised exception.
 
     Returns:
-        Any: 返回值。
+        Exception: Mapped cloud exception.
     """
-    s = str(e).lower()
-
-    # SDK 的 ApiException 通常带 body（json）
+    raw_message = str(e).lower()
     body = getattr(e, "body", None)
     if body:
         try:
-            j = json.loads(body)
-            err = (((j.get("ResponseMetadata") or {}).get("Error")) or {})
-            code = (err.get("Code") or "").strip()
-            msg = (err.get("Message") or "").strip()
+            body_json = json.loads(body)
+            error = (body_json.get("ResponseMetadata", {}).get("Error")) or {}
+            code = str(error.get("Code") or "").strip()
+            message = str(error.get("Message") or "").strip()
+            code_lower = code.lower()
+            message_lower = message.lower()
 
-            cl = code.lower()
-            ml = msg.lower()
-
-            if cl in {"paramsvalueerror", "missingparameter", "invalidparameter"} or "param" in ml:
+            if code_lower in {"paramsvalueerror", "missingparameter", "invalidparameter"} or "param" in message_lower:
                 return InvalidRequest(f"{action} invalid params: {code}")
-            if cl in {"unauthorized", "invalidaccesskey", "signaturedoesnotmatch"}:
+            if code_lower in {"unauthorized", "invalidaccesskey", "signaturedoesnotmatch"}:
                 return AuthError(f"{action} auth failed")
-            if cl in {"forbidden", "accessdenied"}:
+            if code_lower in {"forbidden", "accessdenied"}:
                 return PermissionError(f"{action} permission denied")
-            if "thrott" in cl or "ratelimit" in ml:
+            if "thrott" in code_lower or "ratelimit" in message_lower:
                 return ThrottledError(f"{action} throttled")
-        except Exception:
+        except Exception:  # noqa: BLE001
             pass
 
-    if "timeout" in s or "timed out" in s:
+    if "timeout" in raw_message or "timed out" in raw_message:
         return TimeoutError(f"{action} timeout")
-    if "forbidden" in s or "access denied" in s:
+    if "forbidden" in raw_message or "access denied" in raw_message:
         return PermissionError(f"{action} permission denied")
-    if "thrott" in s or "too many requests" in s:
+    if "thrott" in raw_message or "too many requests" in raw_message:
         return ThrottledError(f"{action} throttled")
-
     return UpstreamError(f"{action} upstream error")

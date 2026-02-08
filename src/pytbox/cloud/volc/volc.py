@@ -1,47 +1,52 @@
+"""Volc cloud module entrypoint."""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
 
-from pytbox.cloud.volc.client import VolcClient, VolcCreds, VolcConfig
-from pytbox.cloud.volc.ecs import ECSResource
+from pytbox.cloud.volc.client import VolcClient, VolcConfig, VolcCreds
 from pytbox.cloud.volc.cloudmonitor import CloudMonitorResource
+from pytbox.cloud.volc.ecs import ECSResource
 
 
 @dataclass(frozen=True)
 class VolcOptions:
-    """
-    VolcOptions 类。
+    """Volc runtime options.
 
-    用于 Volc Options 相关能力的封装。
+    Attributes:
+        timeout_s: Timeout in seconds for each SDK invocation.
+        retries: Retry count for retryable calls. Capped at 3.
+        retry_backoff_s: Exponential backoff base seconds.
     """
+
     timeout_s: float = 8.0
-    # volcengine-python-sdk 里常用 configuration.region
-    # 其他参数后续再加：endpoint、scheme、retries...
+    retries: int = 2
+    retry_backoff_s: float = 0.5
 
 
 class Volc:
-    """
-    用法：
-        ve = Volc(ak="..", sk="..", region="cn-beijing")
-        ve.ecs.list()                    # 默认 region
-        ve.ecs.list(region="cn-shanghai")
-        ve.cloudmonitor.get_metric_data(...)
-    """
+    """Volc resource aggregator."""
 
-    def __init__(self, *, ak: str, sk: str, region: str, options: VolcOptions | None = None):
-        """
-        初始化对象。
+    def __init__(self, *, ak: str, sk: str, region: str, options: VolcOptions | None = None) -> None:
+        """Initialize Volc facade.
 
         Args:
-            ak: ak 参数。
-            sk: sk 参数。
-            region: region 参数。
-            options: options 参数。
+            ak: Volc access key.
+            sk: Volc secret key.
+            region: Default region id.
+            options: Runtime options.
         """
         opt = options or VolcOptions()
+        retries = min(max(opt.retries, 0), 3)
 
         self._client = VolcClient(
             creds=VolcCreds(ak=ak, sk=sk),
-            cfg=VolcConfig(region=region, timeout_s=opt.timeout_s),
+            cfg=VolcConfig(
+                region=region,
+                timeout_s=opt.timeout_s,
+                retries=retries,
+                retry_backoff_s=opt.retry_backoff_s,
+            ),
         )
-
         self.ecs = ECSResource(self._client)
         self.cloudmonitor = CloudMonitorResource(self._client)

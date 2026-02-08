@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
+import logging
 import re
 import pytz
 import time
 import datetime
 from zoneinfo import ZoneInfo
-from typing import Literal
+from typing import Literal, Optional
+
+
+logger = logging.getLogger(__name__)
 
 
 class TimeUtils:
@@ -47,17 +51,20 @@ class TimeUtils:
         return datetime.datetime.now(pytz.timezone('Asia/Shanghai'))
 
     @staticmethod
-    def convert_timeobj_to_str(timeobj: str=None, timezone_offset: int=8, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S'):
-        """
-        转换timeobj to str。
+    def convert_timeobj_to_str(
+        timeobj: Optional[datetime.datetime]=None,
+        timezone_offset: int=8,
+        time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S',
+    ) -> Optional[str]:
+        """Convert a datetime object to a formatted string.
 
         Args:
-            timeobj: timeobj 参数。
-            timezone_offset: timezone_offset 参数。
-            time_format: time_format 参数。
+            timeobj: Datetime object to format.
+            timezone_offset: Hour offset added before formatting.
+            time_format: Target output format.
 
         Returns:
-            Any: 返回值。
+            Optional[str]: Formatted datetime string.
         """
         time_obj_with_offset = timeobj + datetime.timedelta(hours=timezone_offset)
         if time_format == '%Y-%m-%d %H:%M:%S':
@@ -95,15 +102,16 @@ class TimeUtils:
         return time_diff_hours
 
     @staticmethod
-    def convert_syslog_huawei_str_to_8601(timestr):
-        """
-        将华为 syslog 格式的时间字符串（如 '2025-08-02T04:34:24+08:00'）转换为 ISO8601 格式的 UTC 时间字符串。
+    def convert_syslog_huawei_str_to_8601(timestr: Optional[str]) -> Optional[str]:
+        """Convert Huawei syslog time string into UTC ISO8601 format.
 
         Args:
-            timestr (str): 原始时间字符串，格式如 '2025-08-02T04:34:24+08:00'
+            timestr: Input string like ``2025-08-02T04:34:24+08:00``.
 
         Returns:
-            str: 转换后的 ISO8601 格式 UTC 时间字符串，如 '2025-08-01T20:34:24.000000Z'
+            Optional[str]: UTC ISO8601 string like
+                ``2025-08-01T20:34:24.000000Z``. Returns ``None`` if input is
+                invalid.
         """
         if timestr is None:
             return None
@@ -116,8 +124,7 @@ class TimeUtils:
             iso8601_utc: str = dt_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
             return iso8601_utc
         except ValueError as e:
-            # 日志记录异常（此处仅简单打印，实际项目建议用 logging）
-            print(f"时间转换失败: {e}, 输入: {timestr}")
+            logger.warning("时间转换失败: %s, 输入: %s", e, timestr)
             return None
      
     @staticmethod
@@ -381,15 +388,14 @@ class TimeUtils:
     
     @staticmethod
     def get_timestamp_last_day(last_days: int=0, unit: Literal['ms', 's']='ms') -> int:
-        """
-        获取timestamp last day。
+        """Get current timestamp or a timestamp offset by whole days.
 
         Args:
-            last_days: last_days 参数。
-            unit: unit 参数。
+            last_days: Number of days to subtract from now.
+            unit: Timestamp unit, ``ms`` or ``s``.
 
         Returns:
-            Any: 返回值。
+            int: Timestamp in requested unit.
         """
         if last_days == 0:
             if unit == 'ms':
@@ -397,7 +403,10 @@ class TimeUtils:
             elif unit == 's':
                 return int(time.time())
         else:
-            return int(time.time()) * 1000 - last_days * 24 * 60 * 60 * 1000
+            if unit == 'ms':
+                return int(time.time()) * 1000 - last_days * 24 * 60 * 60 * 1000
+            elif unit == 's':
+                return int(time.time()) - last_days * 24 * 60 * 60
     
     @staticmethod
     def get_today_timestamp() -> int:
@@ -408,26 +417,6 @@ class TimeUtils:
             Any: 返回值。
         """
         return int(time.time()) * 1000
-
-
-    @staticmethod
-    def convert_timeobj_to_str(timeobj: str=None, timezone_offset: int=8, time_format: Literal['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']='%Y-%m-%d %H:%M:%S'):
-        """
-        转换timeobj to str。
-
-        Args:
-            timeobj: timeobj 参数。
-            timezone_offset: timezone_offset 参数。
-            time_format: time_format 参数。
-
-        Returns:
-            Any: 返回值。
-        """
-        time_obj_with_offset = timeobj + datetime.timedelta(hours=timezone_offset)
-        if time_format == '%Y-%m-%d %H:%M:%S':
-            return time_obj_with_offset.strftime("%Y-%m-%d %H:%M:%S")
-        elif time_format == '%Y-%m-%dT%H:%M:%SZ':
-            return time_obj_with_offset.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @staticmethod
     def convert_timestamp_to_timeobj(timestamp: int) -> datetime.datetime:
@@ -633,13 +622,13 @@ class TimeUtils:
         return now.weekday() + 1 + offset
     
     @staticmethod
-    def get_last_month_start_and_end_time() -> tuple[datetime.datetime, datetime.datetime]:
-        '''
-        获取上个月的开始和结束时间
+    def get_last_month_start_and_end_time() -> tuple[str, str]:
+        """Get last month's start/end times as UTC-like strings.
 
         Returns:
-            tuple[datetime.datetime, datetime.datetime]: 返回一个元组，包含上个月的开始和结束时间
-        '''
+            tuple[str, str]: Start and end strings formatted as
+                ``%Y-%m-%dT%H:%M:%SZ``.
+        """
         today = datetime.datetime.now()
         # 获取当前月份的第一天
         first_day_of_current_month = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)

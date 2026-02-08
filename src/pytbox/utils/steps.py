@@ -2,21 +2,27 @@
 
 
 import time
+from typing import Any, Callable, TypeVar
 
 
-def run_step(log, name: str, fn, *args, **kwargs):
-    """
-    执行step。
+_T = TypeVar("_T")
+
+
+def run_step(log: Any, name: str, fn: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
+    """Execute one step and log execution details.
 
     Args:
-        log: log 参数。
-        name: name 参数。
-        fn: fn 参数。
-        *args: 可变参数。
-        **kwargs: 可变参数。
+        log: Logger-like object that provides ``info`` and ``exception``.
+        name: Step name used in log messages.
+        fn: Callable to run.
+        *args: Positional arguments passed to ``fn``.
+        **kwargs: Keyword arguments passed to ``fn``.
 
     Returns:
-        Any: 返回值。
+        _T: Return value from ``fn``.
+
+    Raises:
+        Exception: Re-raises any exception raised by ``fn``.
     """
     start = time.perf_counter()
     log.info(f"[{name}] -> {name}")
@@ -25,15 +31,9 @@ def run_step(log, name: str, fn, *args, **kwargs):
         result = fn(*args, **kwargs)
     except Exception:
         cost = time.perf_counter() - start
-        log.exception(
-            f"[{name}] !! {name} failed cost={cost:.3f}s, result={result}",
-            
-        )
+        log.exception(f"[{name}] !! {name} failed cost={cost:.3f}s")
         raise
-    else:
-        cost = time.perf_counter() - start
-        log.info(
-            f"[{name}] <- {name} ok cost={cost:.3f}s, result={result}",
-            
-        )
-        return result
+
+    cost = time.perf_counter() - start
+    log.info(f"[{name}] <- {name} ok cost={cost:.3f}s, result={result}")
+    return result

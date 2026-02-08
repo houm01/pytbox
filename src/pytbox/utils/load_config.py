@@ -2,6 +2,7 @@
 
 import os
 import json
+from typing import Any, Dict, Optional
 
 try:
     # Python 3.11+ 标准库
@@ -21,25 +22,57 @@ from ..onepassword_connect import OnePasswordConnect
 # from pytbox.onepassword_connect import OnePasswordConnect
 
 
-def _replace_values(data, oc=None, jsonfile_path=None):
-    """
-    递归处理配置数据，替换 1password、password 和 jsonfile 开头的值
-    
+def _load_jsonfile_data(jsonfile_path: Optional[str]) -> Optional[Dict[str, Any]]:
+    """Load JSON file data once for ``jsonfile,`` placeholders.
+
     Args:
-        data: 配置数据（dict, list, str 等）
-        oc: OnePasswordConnect 实例
-        jsonfile_path: JSON 文件路径
-    
+        jsonfile_path: Path to the JSON file.
+
     Returns:
-        处理后的数据
+        Optional[Dict[str, Any]]: Parsed JSON dictionary, or ``None`` when the
+            file does not exist, parse fails, or JSON root is not an object.
+    """
+    if not jsonfile_path or not os.path.exists(jsonfile_path):
+        return None
+
+    try:
+        with open(jsonfile_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return None
+
+    return data if isinstance(data, dict) else None
+
+
+def _replace_values(
+    data: Any,
+    oc: Optional[OnePasswordConnect]=None,
+    jsonfile_path: Optional[str]=None,
+    jsonfile_data: Optional[Dict[str, Any]]=None,
+) -> Any:
+    """Recursively resolve special placeholders in config values.
+
+    Supported placeholder prefixes:
+    - ``1password,item_id,field_name``
+    - ``password,item_id,field_name``
+    - ``jsonfile,key`` (supports dotted key path)
+
+    Args:
+        data: Config value to resolve.
+        oc: Optional OnePasswordConnect client.
+        jsonfile_path: JSON file path used for ``jsonfile`` fallback.
+        jsonfile_data: Preloaded JSON data for lookup reuse.
+
+    Returns:
+        Any: Resolved value.
     """
     if isinstance(data, dict):
         result = {}
         for k, v in data.items():
-            result[k] = _replace_values(v, oc, jsonfile_path)
+            result[k] = _replace_values(v, oc, jsonfile_path, jsonfile_data)
         return result
     elif isinstance(data, list):
-        return [_replace_values(item, oc, jsonfile_path) for item in data]
+        return [_replace_values(item, oc, jsonfile_path, jsonfile_data) for item in data]
     elif isinstance(data, str):
         # 处理 1password,item_id,field_name 格式
         if data.startswith("1password,") and oc:
@@ -76,25 +109,19 @@ def _replace_values(data, oc=None, jsonfile_path=None):
             parts = data.split(",", 1)  # 只分割一次，防止 key 中包含逗号
             if len(parts) >= 2:
                 key = parts[1]
-                
-                # 尝试从 JSON 文件获取值
-                if jsonfile_path and os.path.exists(jsonfile_path):
-                    try:
-                        with open(jsonfile_path, 'r', encoding='utf-8') as f:
-                            json_data = json.load(f)
-                            # 支持嵌套键，如 "db.password"
-                            value = json_data
-                            for k in key.split('.'):
-                                if isinstance(value, dict) and k in value:
-                                    value = value[k]
-                                else:
-                                    value = None
-                                    break
-                            if value is not None:
-                                return value
-                    except (json.JSONDecodeError, FileNotFoundError, KeyError):
-                        pass
-                
+
+                # 尝试从预加载的 JSON 数据获取值（支持嵌套键，如 "db.password"）
+                value: Any = jsonfile_data
+                if isinstance(value, dict):
+                    for key_part in key.split("."):
+                        if isinstance(value, dict) and key_part in value:
+                            value = value[key_part]
+                        else:
+                            value = None
+                            break
+                    if value is not None:
+                        return value
+
                 # 如果从 JSON 文件获取失败，尝试从环境变量获取
                 env_value = os.getenv(key)
                 if env_value is not None:
@@ -108,19 +135,19 @@ def _replace_values(data, oc=None, jsonfile_path=None):
 
 def load_config_by_file(
         path: str='/workspaces/pytbox/src/pytbox/alert/config/config.toml', 
-        oc_vault_id: str=None, 
+        oc_vault_id: Optional[str]=None, 
         jsonfile: str="/data/jsonfile.json",
-    ) -> dict:
-    '''
-    从文件加载配置，支持 1password 集成
-    
+    ) -> Dict[str, Any]:
+    """Load config from TOML/JSON and resolve supported placeholders.
+
     Args:
-        path (str, optional): 配置文件路径. Defaults to '/workspaces/pytbox/src/pytbox/alert/config/config.toml'.
-        oc_vault_id (str, optional): OnePassword vault ID，如果提供则启用 1password 集成
-        
+        path: Config file path.
+        oc_vault_id: OnePassword vault ID. Enables 1Password lookup when set.
+        jsonfile: JSON file path for ``jsonfile,`` lookups.
+
     Returns:
-        dict: 配置字典
-    '''
+        Dict[str, Any]: Loaded and resolved config.
+    """
     if path.endswith('.toml'):
         if _TOML_NEEDS_BINARY_FILE:
             # tomllib/tomli 需要以二进制模式读取
@@ -139,12 +166,11 @@ def load_config_by_file(
     oc = None
     if oc_vault_id:
         oc = OnePasswordConnect(vault_id=oc_vault_id)
-    
+
+    # JSON 文件只加载一次，避免在递归替换时重复 IO
+    jsonfile_data = _load_jsonfile_data(jsonfile)
+
     # 替换配置中的特殊值（1password, password, jsonfile）
-    config = _replace_values(config, oc, jsonfile)
-    
+    config = _replace_values(config, oc, jsonfile, jsonfile_data)
+
     return config
-
-
-if __name__ == "__main__":
-    print(load_config_by_file(path='/workspaces/pytbox/tests/alert/config_dev.toml', oc_vault_id="hcls5uxuq5dmxorw6rfewefdsa"))
