@@ -18,6 +18,9 @@ jobs:
       - name: Install build tools
         run: pip install build twine
 
+      - name: Derive package version from tag
+        run: python scripts/ci/version_from_tag.py --tag "${GITHUB_REF_NAME}" --github-env "${GITHUB_ENV}"
+
       - name: Build package
         run: python -m build
 
