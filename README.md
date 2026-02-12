@@ -213,12 +213,19 @@ ruff check src/ tests/
 
 项目使用 GitHub Actions 自动发布到 PyPI：
 
-1. 更新版本号（在 `pyproject.toml` 中）
-2. 使用发布脚本创建标签：
+1. 使用发布脚本创建标签（默认先预览并确认）：
    ```bash
-   ./publish.sh 0.1.1
+   ./publish.sh
    ```
-3. GitHub Actions 会自动构建并发布到 PyPI
+2. 如需手动指定标签（必须完整格式）：
+   ```bash
+   ./publish.sh v0.1.1-20260212
+   ```
+3. CI/自动化场景可跳过确认：
+   ```bash
+   ./publish.sh --yes
+   ```
+4. GitHub Actions 会在 `v*` 标签推送后自动构建并发布到 PyPI
 
 ## 贡献
 
