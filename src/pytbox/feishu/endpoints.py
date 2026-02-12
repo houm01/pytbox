@@ -251,30 +251,145 @@ class MessageEndpoint(Endpoint):
         return self.parent.request(path=f'/im/v1/messages?container_id={chat_id}&container_id_type={chat_type}&end_time={end_time}&page_size={page_size}&sort_type=ByCreateTimeAsc&start_time={start_time}', 
                             method='GET')
     
-    def reply(self, message_id: str, content: str) -> ReturnResponse:
+    def reply(
+        self,
+        message_id: str,
+        content: str | list[list[dict[str, Any]]] | dict[str, Any],
+        msg_type: Literal["text", "post", "card", "interactive"] = "text",
+        title: str | None = None,
+        reply_in_thread: bool = False,
+    ) -> ReturnResponse:
         """
-        执行 reply 相关逻辑。
+        回复消息，支持 text、post 和 card。
 
         Args:
-            message_id: 资源 ID。
-            content: content 参数。
+            message_id: 要回复的消息 ID。
+            content: 回复内容。text 使用字符串；post 使用二维 list；card 使用 dict。
+            msg_type: 回复消息类型，支持 text/post/card/interactive。
+            title: 当 msg_type=post 时使用的标题。
+            reply_in_thread: 是否在线程中回复。
 
         Returns:
-            Any: 返回值。
+            ReturnResponse: 飞书 API 响应。
         """
-        content = {
-            "text": content
-        }
+        normalized_msg_type = "interactive" if msg_type == "card" else msg_type
+
+        if normalized_msg_type == "text":
+            if not isinstance(content, str):
+                return ReturnResponse(
+                    code=1001,
+                    msg="msg_type=text 时 content 必须是字符串",
+                    data=None,
+                )
+            payload_content = {"text": content}
+        elif normalized_msg_type == "post":
+            if not isinstance(content, list):
+                return ReturnResponse(
+                    code=1001,
+                    msg="msg_type=post 时 content 必须是列表",
+                    data=None,
+                )
+            payload_content = {
+                "zh_cn": {
+                    "title": title or "",
+                    "content": content,
+                }
+            }
+        elif normalized_msg_type == "interactive":
+            if not isinstance(content, dict):
+                return ReturnResponse(
+                    code=1001,
+                    msg="msg_type=card/interactive 时 content 必须是字典",
+                    data=None,
+                )
+            payload_content = content
+        else:
+            return ReturnResponse(
+                code=1001,
+                msg="msg_type 仅支持 text/post/card/interactive",
+                data=None,
+            )
+
         payload = {
-            "content": json.dumps(content, ensure_ascii=False),
-            "msg_type": "text",
-            "reply_in_thread": False,
-        	"uuid": str(uuid.uuid4())
+            "content": json.dumps(payload_content, ensure_ascii=False),
+            "msg_type": normalized_msg_type,
+            "reply_in_thread": reply_in_thread,
+            "uuid": str(uuid.uuid4()),
         }
         return self.parent.request(
             path=f"/im/v1/messages/{message_id}/reply",
             method='POST',
             body=payload
+        )
+
+    def reply_post(
+        self,
+        message_id: str,
+        title: str,
+        content: list[list[dict[str, Any]]],
+        reply_in_thread: bool = False,
+    ) -> ReturnResponse:
+        """
+        回复 post 富文本消息。
+
+        Args:
+            message_id: 要回复的消息 ID。
+            title: 富文本标题。
+            content: 富文本内容（二维 list，符合飞书 post 结构）。
+            reply_in_thread: 是否在线程中回复。
+
+        Returns:
+            ReturnResponse: 飞书 API 响应。
+        """
+        return self.reply(
+            message_id=message_id,
+            content=content,
+            msg_type="post",
+            title=title,
+            reply_in_thread=reply_in_thread,
+        )
+
+    def reply_card(
+        self,
+        message_id: str,
+        card: dict[str, Any] | None = None,
+        template_id: str | None = None,
+        template_variable: dict[str, Any] | None = None,
+        reply_in_thread: bool = False,
+    ) -> ReturnResponse:
+        """
+        回复 card 消息。
+
+        Args:
+            message_id: 要回复的消息 ID。
+            card: 完整 card 内容；传入时会优先使用。
+            template_id: 模板卡片 ID；当 card 为空时必填。
+            template_variable: 模板变量。
+            reply_in_thread: 是否在线程中回复。
+
+        Returns:
+            ReturnResponse: 飞书 API 响应。
+        """
+        if card is None:
+            if not template_id:
+                return ReturnResponse(
+                    code=1001,
+                    msg="card 或 template_id 必填",
+                    data=None,
+                )
+            card = {
+                "type": "template",
+                "data": {
+                    "template_id": template_id,
+                    "template_variable": template_variable or {},
+                },
+            }
+
+        return self.reply(
+            message_id=message_id,
+            content=card,
+            msg_type="card",
+            reply_in_thread=reply_in_thread,
         )
     
     def forward(self, message_id: str, receive_id: str) -> ReturnResponse:
