@@ -83,6 +83,38 @@ if resp.code != 0:
     raise RuntimeError(resp.msg)
 ```
 
+### 3.5 回复消息（text / post / card）
+
+```python
+# 1) 回复 text（兼容旧用法）
+resp = feishu.message.reply(message_id="om_xxx", content="收到")
+if resp.code != 0:
+    raise RuntimeError(resp.msg)
+
+# 2) 回复 post
+post_content = [
+    [
+        {"tag": "text", "text": "告警详情见下文"}
+    ]
+]
+resp = feishu.message.reply_post(
+    message_id="om_xxx",
+    title="告警通知",
+    content=post_content,
+)
+if resp.code != 0:
+    raise RuntimeError(resp.msg)
+
+# 3) 回复 card（模板卡片）
+resp = feishu.message.reply_card(
+    message_id="om_xxx",
+    template_id="AAqzcy5Qrx84H",
+    template_variable={"title": "告警恢复"},
+)
+if resp.code != 0:
+    raise RuntimeError(resp.msg)
+```
+
 ## 4. Live 测试
 
 live 测试文件：
