@@ -211,3 +211,4 @@ test_jira.py
 tests/*.csv
 
 fixtures/
+.worktrees/
