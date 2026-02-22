@@ -171,12 +171,15 @@ def test_aliyun_options_passthrough_and_retry_cap(monkeypatch: pytest.MonkeyPatc
         retries=99,
         cms_endpoint="custom.cms.endpoint",
         ram_endpoint="custom.ram.endpoint",
+        sls_endpoint="custom.sls.endpoint",
     )
     ali = aliyun_mod.Aliyun(ak="ak", sk="secret-sk", region="cn-shanghai", options=options)
 
     assert ali._client.cfg.retries == 3
     assert ali._client.cfg.cms_endpoint == "custom.cms.endpoint"
     assert ali._client.cfg.ram_endpoint == "custom.ram.endpoint"
+    assert ali._client.cfg.sls_endpoint == "custom.sls.endpoint"
+    assert hasattr(ali, "sls")
 
 
 def test_aliyun_client_call_retries_and_logs(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
