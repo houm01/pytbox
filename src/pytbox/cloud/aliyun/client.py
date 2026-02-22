@@ -42,6 +42,7 @@ class AliyunConfig:
         ecs_endpoint: Optional custom ECS endpoint.
         cms_endpoint: Optional custom CMS endpoint.
         ram_endpoint: Optional custom RAM endpoint.
+        sls_endpoint: Optional custom SLS endpoint.
     """
 
     region: str
@@ -51,6 +52,7 @@ class AliyunConfig:
     ecs_endpoint: str | None = None
     cms_endpoint: str | None = None
     ram_endpoint: str | None = None
+    sls_endpoint: str | None = None
 
 
 class AliyunClient:

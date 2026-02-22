@@ -8,6 +8,7 @@ from pytbox.cloud.aliyun.client import AliyunClient, AliyunConfig, AliyunCreds
 from pytbox.cloud.aliyun.cms import CMSResource
 from pytbox.cloud.aliyun.ecs import ECSResource
 from pytbox.cloud.aliyun.ram import RAMResource
+from pytbox.cloud.aliyun.sls import SLSResource
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class AliyunOptions:
         ecs_endpoint: Optional custom ECS endpoint.
         cms_endpoint: Optional custom CMS endpoint.
         ram_endpoint: Optional custom RAM endpoint.
+        sls_endpoint: Optional custom SLS endpoint.
     """
 
     timeout_s: float = 8.0
@@ -29,6 +31,7 @@ class AliyunOptions:
     ecs_endpoint: str | None = None
     cms_endpoint: str | None = None
     ram_endpoint: str | None = None
+    sls_endpoint: str | None = None
 
 
 class Aliyun:
@@ -70,8 +73,10 @@ class Aliyun:
                 ecs_endpoint=opt.ecs_endpoint,
                 cms_endpoint=cms_endpoint,
                 ram_endpoint=opt.ram_endpoint,
+                sls_endpoint=opt.sls_endpoint,
             ),
         )
         self.ecs = ECSResource(self._client)
         self.cms = CMSResource(self._client)
         self.ram = RAMResource(self._client)
+        self.sls = SLSResource(self._client)
