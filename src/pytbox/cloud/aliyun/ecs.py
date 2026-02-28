@@ -36,6 +36,36 @@ class ECSResource:
             return instances
         return []
 
+    @staticmethod
+    def _extract_eip_addresses(body_map: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract EIP addresses from SDK map.
+
+        Args:
+            body_map: SDK response body map.
+
+        Returns:
+            list[dict[str, Any]]: EIP address list.
+        """
+        eips = body_map.get("EipAddresses", {}).get("EipAddress", [])
+        if isinstance(eips, list):
+            return eips
+        return []
+
+    @staticmethod
+    def _extract_disks(body_map: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract disk list from SDK map.
+
+        Args:
+            body_map: SDK response body map.
+
+        Returns:
+            list[dict[str, Any]]: Disk list.
+        """
+        disks = body_map.get("Disks", {}).get("Disk", [])
+        if isinstance(disks, list):
+            return disks
+        return []
+
     def list(
         self,
         *,
@@ -125,3 +155,107 @@ class ECSResource:
         instances = response.data if isinstance(response.data, list) else []
         instance_ids = [str(item.get("InstanceId")) for item in instances if item.get("InstanceId")]
         return ReturnResponse(code=response.code, msg=response.msg, data=instance_ids)
+
+    def count_unassociated_eip_addresses(
+        self,
+        *,
+        region: str | None = None,
+        page_size: int = 50,
+        status: str = "Available",
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """Count unassociated EIP addresses.
+
+        Args:
+            region: Optional region override.
+            page_size: Number of resources per page.
+            status: EIP status filter.
+            **kwargs: Pass-through params for ``DescribeEipAddressesRequest``.
+
+        Returns:
+            ReturnResponse: ``data`` contains ``count``.
+        """
+        region_id = region or self._c.cfg.region
+        page_number = 1
+        count = 0
+        request_kwargs = dict(kwargs)
+        request_kwargs.setdefault("status", status)
+
+        while True:
+            req = ecs_models.DescribeEipAddressesRequest(
+                region_id=region_id,
+                page_size=page_size,
+                page_number=page_number,
+                **request_kwargs,
+            )
+            resp = self._c.call(
+                "ecs_count_unassociated_eip_addresses",
+                lambda: self._c.ecs.describe_eip_addresses(req),
+            )
+            body = getattr(resp, "body", None)
+            body_map = body.to_map() if hasattr(body, "to_map") else {}
+
+            eips = self._extract_eip_addresses(body_map)
+            if not eips:
+                break
+
+            count += sum(1 for item in eips if isinstance(item, dict) and not item.get("InstanceId"))
+
+            total_count = int(body_map.get("TotalCount", 0) or 0)
+            if page_number * page_size >= total_count:
+                break
+            page_number += 1
+
+        return ReturnResponse(code=0, msg="success", data={"count": count})
+
+    def count_unattached_disks(
+        self,
+        *,
+        region: str | None = None,
+        page_size: int = 50,
+        status: str = "Available",
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """Count unattached disks.
+
+        Args:
+            region: Optional region override.
+            page_size: Number of resources per page.
+            status: Disk status filter.
+            **kwargs: Pass-through params for ``DescribeDisksRequest``.
+
+        Returns:
+            ReturnResponse: ``data`` contains ``count``.
+        """
+        region_id = region or self._c.cfg.region
+        page_number = 1
+        count = 0
+        request_kwargs = dict(kwargs)
+        request_kwargs.setdefault("status", status)
+
+        while True:
+            req = ecs_models.DescribeDisksRequest(
+                region_id=region_id,
+                page_size=page_size,
+                page_number=page_number,
+                **request_kwargs,
+            )
+            resp = self._c.call(
+                "ecs_count_unattached_disks",
+                lambda: self._c.ecs.describe_disks(req),
+            )
+            body = getattr(resp, "body", None)
+            body_map = body.to_map() if hasattr(body, "to_map") else {}
+
+            disks = self._extract_disks(body_map)
+            if not disks:
+                break
+
+            count += sum(1 for item in disks if isinstance(item, dict) and not item.get("InstanceId"))
+
+            total_count = int(body_map.get("TotalCount", 0) or 0)
+            if page_number * page_size >= total_count:
+                break
+            page_number += 1
+
+        return ReturnResponse(code=0, msg="success", data={"count": count})
