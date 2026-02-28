@@ -73,8 +73,22 @@ def _install_fake_aliyun_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             self.kwargs = kwargs
 
+    class DescribeEipAddressesRequest:
+        """Fake request."""
+
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
+    class DescribeDisksRequest:
+        """Fake request."""
+
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
     ecs_client_mod.Client = FakeEcsClient
     ecs_models_mod.DescribeInstancesRequest = DescribeInstancesRequest
+    ecs_models_mod.DescribeEipAddressesRequest = DescribeEipAddressesRequest
+    ecs_models_mod.DescribeDisksRequest = DescribeDisksRequest
     register("alibabacloud_ecs20140526", ecs_pkg)
     register("alibabacloud_ecs20140526.client", ecs_client_mod)
     register("alibabacloud_ecs20140526.models", ecs_models_mod)
@@ -264,6 +278,110 @@ def test_aliyun_ecs_get_instance_and_list_instance_ids(monkeypatch: pytest.Monke
     assert isinstance(instance_resp, ReturnResponse)
     assert instance_resp.data["InstanceId"] == "i-1"
     assert ids_resp.data == ["i-1", "i-2"]
+
+
+def test_aliyun_ecs_count_unbound_resources(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ECS helper APIs should count unbound EIP and unattached disks."""
+    _install_fake_aliyun_sdk(monkeypatch)
+    _client_mod, ecs_mod, _cms_mod, _ram_mod, _aliyun_mod = _load_aliyun_modules()
+
+    class FakeBody:
+        """Fake response body."""
+
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def to_map(self) -> dict[str, Any]:
+            return self._payload
+
+    class FakeResponse:
+        """Fake SDK response."""
+
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self.body = FakeBody(payload)
+
+    class FakeEcsApi:
+        """Fake ECS API."""
+
+        def __init__(self) -> None:
+            self.eip_requests: list[Any] = []
+            self.disk_requests: list[Any] = []
+
+        def describe_eip_addresses(self, request: Any) -> FakeResponse:
+            self.eip_requests.append(request)
+            page = int(request.kwargs.get("page_number", 1))
+            if page == 1:
+                return FakeResponse(
+                    {
+                        "TotalCount": 3,
+                        "EipAddresses": {
+                            "EipAddress": [
+                                {"AllocationId": "eip-1", "Status": "Available", "InstanceId": None},
+                                {"AllocationId": "eip-2", "Status": "Available", "InstanceId": "i-1"},
+                            ]
+                        },
+                    }
+                )
+            return FakeResponse(
+                {
+                    "TotalCount": 3,
+                    "EipAddresses": {"EipAddress": [{"AllocationId": "eip-3", "Status": "Available", "InstanceId": ""}]},
+                }
+            )
+
+        def describe_disks(self, request: Any) -> FakeResponse:
+            self.disk_requests.append(request)
+            page = int(request.kwargs.get("page_number", 1))
+            if page == 1:
+                return FakeResponse(
+                    {
+                        "TotalCount": 4,
+                        "Disks": {
+                            "Disk": [
+                                {"DiskId": "d-1", "Status": "Available", "InstanceId": None},
+                                {"DiskId": "d-2", "Status": "Available", "InstanceId": "i-2"},
+                            ]
+                        },
+                    }
+                )
+            return FakeResponse(
+                {
+                    "TotalCount": 4,
+                    "Disks": {
+                        "Disk": [
+                            {"DiskId": "d-3", "Status": "Available", "InstanceId": ""},
+                            {"DiskId": "d-4", "Status": "Available", "InstanceId": "i-4"},
+                        ]
+                    },
+                }
+            )
+
+    class FakeClient:
+        """Fake Aliyun client."""
+
+        def __init__(self) -> None:
+            self.cfg = types.SimpleNamespace(region="cn-shanghai")
+            self.ecs = FakeEcsApi()
+            self.actions: list[str] = []
+
+        def call(self, action: str, caller: Any) -> Any:
+            self.actions.append(action)
+            return caller()
+
+    client = FakeClient()
+    resource = ecs_mod.ECSResource(client)
+
+    eip_resp = resource.count_unassociated_eip_addresses(region="cn-shanghai", page_size=2)
+    disk_resp = resource.count_unattached_disks(region="cn-shanghai", page_size=2)
+
+    assert eip_resp.code == 0
+    assert disk_resp.code == 0
+    assert eip_resp.data == {"count": 2}
+    assert disk_resp.data == {"count": 2}
+    assert client.actions.count("ecs_count_unassociated_eip_addresses") == 2
+    assert client.actions.count("ecs_count_unattached_disks") == 2
+    assert all(req.kwargs.get("status") == "Available" for req in client.ecs.eip_requests)
+    assert all(req.kwargs.get("status") == "Available" for req in client.ecs.disk_requests)
 
 
 def test_aliyun_cms_latest_metric_point(monkeypatch: pytest.MonkeyPatch) -> None:
