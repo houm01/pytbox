@@ -7,8 +7,14 @@ from dataclasses import dataclass
 from pytbox.cloud.aliyun.client import AliyunClient, AliyunConfig, AliyunCreds
 from pytbox.cloud.aliyun.cms import CMSResource
 from pytbox.cloud.aliyun.ecs import ECSResource
+from pytbox.cloud.aliyun.kvstore import KVStoreResource
+from pytbox.cloud.aliyun.oss import OSSResource
 from pytbox.cloud.aliyun.ram import RAMResource
+from pytbox.cloud.aliyun.rds import RDSResource
+from pytbox.cloud.aliyun.sas import SASResource
+from pytbox.cloud.aliyun.slb import SLBResource
 from pytbox.cloud.aliyun.sls import SLSResource
+from pytbox.cloud.aliyun.vpc import VPCResource
 
 
 @dataclass(frozen=True)
@@ -23,6 +29,12 @@ class AliyunOptions:
         cms_endpoint: Optional custom CMS endpoint.
         ram_endpoint: Optional custom RAM endpoint.
         sls_endpoint: Optional custom SLS endpoint.
+        rds_endpoint: Optional custom RDS endpoint.
+        kvstore_endpoint: Optional custom KVStore endpoint.
+        vpc_endpoint: Optional custom VPC endpoint.
+        slb_endpoint: Optional custom SLB endpoint.
+        sas_endpoint: Optional custom Security Center endpoint.
+        oss_endpoint: Optional custom OSS endpoint.
     """
 
     timeout_s: float = 8.0
@@ -32,6 +44,12 @@ class AliyunOptions:
     cms_endpoint: str | None = None
     ram_endpoint: str | None = None
     sls_endpoint: str | None = None
+    rds_endpoint: str | None = None
+    kvstore_endpoint: str | None = None
+    vpc_endpoint: str | None = None
+    slb_endpoint: str | None = None
+    sas_endpoint: str | None = None
+    oss_endpoint: str | None = None
 
 
 class Aliyun:
@@ -74,9 +92,21 @@ class Aliyun:
                 cms_endpoint=cms_endpoint,
                 ram_endpoint=opt.ram_endpoint,
                 sls_endpoint=opt.sls_endpoint,
+                rds_endpoint=opt.rds_endpoint,
+                kvstore_endpoint=opt.kvstore_endpoint,
+                vpc_endpoint=opt.vpc_endpoint,
+                slb_endpoint=opt.slb_endpoint,
+                sas_endpoint=opt.sas_endpoint,
+                oss_endpoint=opt.oss_endpoint,
             ),
         )
         self.ecs = ECSResource(self._client)
         self.cms = CMSResource(self._client)
         self.ram = RAMResource(self._client)
+        self.rds = RDSResource(self._client)
+        self.kvstore = KVStoreResource(self._client)
+        self.vpc = VPCResource(self._client)
+        self.slb = SLBResource(self._client)
+        self.sas = SASResource(self._client)
+        self.oss = OSSResource(self._client)
         self.sls = SLSResource(self._client)
