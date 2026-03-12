@@ -219,3 +219,73 @@ class RAMResource:
             ReturnResponse: Same as ``get_policy_for_user``.
         """
         return self.get_policy_for_user(username=username)
+
+    def get_policies_for_user(self, username: str) -> ReturnResponse:
+        """Get RAM policies attached to a user.
+
+        Args:
+            username: RAM username.
+
+        Returns:
+            ReturnResponse: ``data`` contains ``policies_for_user``.
+        """
+        response = self.get_policy_for_user(username=username)
+        payload = response.data if isinstance(response.data, dict) else {}
+        policies = payload.get("policy_for_user", [])
+        return ReturnResponse(code=response.code, msg=response.msg, data={"policies_for_user": policies})
+
+    def list_policies_for_user(self, username: str) -> ReturnResponse:
+        """Alias of ``get_policies_for_user``.
+
+        Args:
+            username: RAM username.
+
+        Returns:
+            ReturnResponse: Same as ``get_policies_for_user``.
+        """
+        return self.get_policies_for_user(username=username)
+
+    def list_groups_for_user(self, username: str) -> ReturnResponse:
+        """List RAM groups attached to a user.
+
+        Args:
+            username: RAM username.
+
+        Returns:
+            ReturnResponse: ``data`` contains ``groups_for_user``.
+        """
+        try:
+            request = ram_20150501_models.ListGroupsForUserRequest(user_name=username)
+            runtime = util_models.RuntimeOptions()
+            response = self._c.call(
+                "ram_list_groups_for_user",
+                lambda: self._c.ram.list_groups_for_user_with_options(request, runtime),
+            )
+            body_map = self._body_to_map(response)
+            groups = body_map.get("Groups", {}).get("Group", [])
+            if not isinstance(groups, list):
+                groups = []
+            return ReturnResponse(code=0, msg="success", data={"groups_for_user": groups})
+        except Exception as error:  # noqa: BLE001
+            return self._failure_response(error)
+
+    def get_login_profile(self, username: str) -> ReturnResponse:
+        """Get RAM user login profile.
+
+        Args:
+            username: RAM username.
+
+        Returns:
+            ReturnResponse: ``data`` contains ``login_profile``.
+        """
+        try:
+            request = ram_20150501_models.GetLoginProfileRequest(user_name=username)
+            runtime = util_models.RuntimeOptions()
+            response = self._c.call(
+                "ram_get_login_profile",
+                lambda: self._c.ram.get_login_profile_with_options(request, runtime),
+            )
+            body_map = self._body_to_map(response)
+            return ReturnResponse(code=0, msg="success", data={"login_profile": body_map.get("LoginProfile")})
+        except Exception as error:  # noqa: BLE001
+            return self._failure_response(error)

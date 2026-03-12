@@ -12,7 +12,15 @@ import uuid
 from alibabacloud_cms20190101.client import Client as Cms20190101Client
 from alibabacloud_ecs20140526 import client as ecs_client
 from alibabacloud_ram20150501.client import Client as Ram20150501Client
+from alibabacloud_r_kvstore20150101.client import Client as KVStore20150101Client
+from alibabacloud_rds20140815.client import Client as Rds20140815Client
+from alibabacloud_sas20181203.client import Client as Sas20181203Client
+from alibabacloud_slb20140515.client import Client as Slb20140515Client
 from alibabacloud_tea_openapi import models as open_api_models
+from alibabacloud_vpc20160428.client import Client as Vpc20160428Client
+from alibabacloud_oss_v2.client import Client as OssV2Client
+from alibabacloud_oss_v2.config import Config as OssV2Config
+from alibabacloud_oss_v2.credentials import StaticCredentialsProvider
 
 from pytbox.cloud.aliyun.errors import map_tea_exception
 
@@ -43,6 +51,12 @@ class AliyunConfig:
         cms_endpoint: Optional custom CMS endpoint.
         ram_endpoint: Optional custom RAM endpoint.
         sls_endpoint: Optional custom SLS endpoint.
+        rds_endpoint: Optional custom RDS endpoint.
+        kvstore_endpoint: Optional custom KVStore endpoint.
+        vpc_endpoint: Optional custom VPC endpoint.
+        slb_endpoint: Optional custom SLB endpoint.
+        sas_endpoint: Optional custom Security Center endpoint.
+        oss_endpoint: Optional custom OSS endpoint.
     """
 
     region: str
@@ -53,6 +67,12 @@ class AliyunConfig:
     cms_endpoint: str | None = None
     ram_endpoint: str | None = None
     sls_endpoint: str | None = None
+    rds_endpoint: str | None = None
+    kvstore_endpoint: str | None = None
+    vpc_endpoint: str | None = None
+    slb_endpoint: str | None = None
+    sas_endpoint: str | None = None
+    oss_endpoint: str | None = None
 
 
 class AliyunClient:
@@ -71,6 +91,12 @@ class AliyunClient:
         self._ecs = self._create_ecs_client()
         self._cms = self._create_cms_client()
         self._ram = self._create_ram_client()
+        self._rds = self._create_rds_client()
+        self._kvstore = self._create_kvstore_client()
+        self._vpc = self._create_vpc_client()
+        self._slb = self._create_slb_client()
+        self._sas = self._create_sas_client()
+        self._oss = self._create_oss_client()
 
     def _build_openapi_config(self) -> open_api_models.Config:
         """Build base OpenAPI config for sub-clients.
@@ -117,6 +143,81 @@ class AliyunClient:
             config.endpoint = self.cfg.ram_endpoint
         return Ram20150501Client(config)
 
+    def _create_rds_client(self) -> Rds20140815Client:
+        """Create RDS client.
+
+        Returns:
+            Rds20140815Client: RDS SDK client.
+        """
+        config = self._build_openapi_config()
+        if self.cfg.rds_endpoint:
+            config.endpoint = self.cfg.rds_endpoint
+        return Rds20140815Client(config)
+
+    def _create_kvstore_client(self) -> KVStore20150101Client:
+        """Create KVStore client.
+
+        Returns:
+            KVStore20150101Client: KVStore SDK client.
+        """
+        config = self._build_openapi_config()
+        if self.cfg.kvstore_endpoint:
+            config.endpoint = self.cfg.kvstore_endpoint
+        return KVStore20150101Client(config)
+
+    def _create_vpc_client(self) -> Vpc20160428Client:
+        """Create VPC client.
+
+        Returns:
+            Vpc20160428Client: VPC SDK client.
+        """
+        config = self._build_openapi_config()
+        if self.cfg.vpc_endpoint:
+            config.endpoint = self.cfg.vpc_endpoint
+        return Vpc20160428Client(config)
+
+    def _create_slb_client(self) -> Slb20140515Client:
+        """Create SLB client.
+
+        Returns:
+            Slb20140515Client: SLB SDK client.
+        """
+        config = self._build_openapi_config()
+        if self.cfg.slb_endpoint:
+            config.endpoint = self.cfg.slb_endpoint
+        return Slb20140515Client(config)
+
+    def _create_sas_client(self) -> Sas20181203Client:
+        """Create Security Center client.
+
+        Returns:
+            Sas20181203Client: SAS SDK client.
+        """
+        config = self._build_openapi_config()
+        if self.cfg.sas_endpoint:
+            config.endpoint = self.cfg.sas_endpoint
+        return Sas20181203Client(config)
+
+    def _create_oss_client(self) -> OssV2Client:
+        """Create OSS client.
+
+        Returns:
+            OssV2Client: OSS v2 SDK client.
+        """
+        endpoint = self.cfg.oss_endpoint or f"oss-{self.cfg.region}.aliyuncs.com"
+        config = OssV2Config(
+            region=self.cfg.region,
+            endpoint=endpoint,
+            credentials_provider=StaticCredentialsProvider(
+                self.creds.ak,
+                self.creds.sk,
+            ),
+            retry_max_attempts=min(max(self.cfg.retries, 0), 3) + 1,
+            connect_timeout=self.cfg.timeout_s,
+            readwrite_timeout=self.cfg.timeout_s,
+        )
+        return OssV2Client(config)
+
     @property
     def ecs(self) -> ecs_client.Client:
         """Get ECS client.
@@ -143,6 +244,60 @@ class AliyunClient:
             Ram20150501Client: RAM SDK client.
         """
         return self._ram
+
+    @property
+    def rds(self) -> Rds20140815Client:
+        """Get RDS client.
+
+        Returns:
+            Rds20140815Client: RDS SDK client.
+        """
+        return self._rds
+
+    @property
+    def kvstore(self) -> KVStore20150101Client:
+        """Get KVStore client.
+
+        Returns:
+            KVStore20150101Client: KVStore SDK client.
+        """
+        return self._kvstore
+
+    @property
+    def vpc(self) -> Vpc20160428Client:
+        """Get VPC client.
+
+        Returns:
+            Vpc20160428Client: VPC SDK client.
+        """
+        return self._vpc
+
+    @property
+    def slb(self) -> Slb20140515Client:
+        """Get SLB client.
+
+        Returns:
+            Slb20140515Client: SLB SDK client.
+        """
+        return self._slb
+
+    @property
+    def sas(self) -> Sas20181203Client:
+        """Get Security Center client.
+
+        Returns:
+            Sas20181203Client: SAS SDK client.
+        """
+        return self._sas
+
+    @property
+    def oss(self) -> OssV2Client:
+        """Get OSS client.
+
+        Returns:
+            OssV2Client: OSS SDK client.
+        """
+        return self._oss
 
     def _invoke_with_timeout(self, caller: Callable[[], Any]) -> Any:
         """Invoke an SDK caller with timeout protection.
