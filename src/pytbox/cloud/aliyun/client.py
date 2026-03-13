@@ -10,6 +10,7 @@ from typing import Any, Callable
 import uuid
 
 from alibabacloud_cms20190101.client import Client as Cms20190101Client
+from alibabacloud_bssopenapi20171214.client import Client as BssOpenApi20171214Client
 from alibabacloud_ecs20140526 import client as ecs_client
 from alibabacloud_ram20150501.client import Client as Ram20150501Client
 from alibabacloud_r_kvstore20150101.client import Client as KVStore20150101Client
@@ -57,6 +58,7 @@ class AliyunConfig:
         slb_endpoint: Optional custom SLB endpoint.
         sas_endpoint: Optional custom Security Center endpoint.
         oss_endpoint: Optional custom OSS endpoint.
+        bss_endpoint: Optional custom BSS endpoint.
     """
 
     region: str
@@ -73,6 +75,7 @@ class AliyunConfig:
     slb_endpoint: str | None = None
     sas_endpoint: str | None = None
     oss_endpoint: str | None = None
+    bss_endpoint: str | None = None
 
 
 class AliyunClient:
@@ -97,6 +100,7 @@ class AliyunClient:
         self._slb = self._create_slb_client()
         self._sas = self._create_sas_client()
         self._oss = self._create_oss_client()
+        self._bss = self._create_bss_client()
 
     def _build_openapi_config(self) -> open_api_models.Config:
         """Build base OpenAPI config for sub-clients.
@@ -218,6 +222,17 @@ class AliyunClient:
         )
         return OssV2Client(config)
 
+    def _create_bss_client(self) -> BssOpenApi20171214Client:
+        """Create BSS client.
+
+        Returns:
+            BssOpenApi20171214Client: BSS SDK client.
+        """
+        config = self._build_openapi_config()
+        if self.cfg.bss_endpoint:
+            config.endpoint = self.cfg.bss_endpoint
+        return BssOpenApi20171214Client(config)
+
     @property
     def ecs(self) -> ecs_client.Client:
         """Get ECS client.
@@ -298,6 +313,15 @@ class AliyunClient:
             OssV2Client: OSS SDK client.
         """
         return self._oss
+
+    @property
+    def bss(self) -> BssOpenApi20171214Client:
+        """Get BSS client.
+
+        Returns:
+            BssOpenApi20171214Client: BSS SDK client.
+        """
+        return self._bss
 
     def _invoke_with_timeout(self, caller: Callable[[], Any]) -> Any:
         """Invoke an SDK caller with timeout protection.

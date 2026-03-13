@@ -37,6 +37,7 @@ dependencies = [
     "alibabacloud-slb20140515>=2.0.7",
     "alibabacloud-sas20181203>=1.0.45",
     "alibabacloud-oss-v2>=1.1.3",
+    "alibabacloud-bssopenapi20171214==5.1.1",
     "alibabacloud-tea-openapi>=0.4.3",
     "alibabacloud-tea-util>=0.3.14",
 ]
