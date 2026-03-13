@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pytbox.cloud.aliyun.client import AliyunClient, AliyunConfig, AliyunCreds
+from pytbox.cloud.aliyun.bss import BSSResource
 from pytbox.cloud.aliyun.cms import CMSResource
 from pytbox.cloud.aliyun.ecs import ECSResource
 from pytbox.cloud.aliyun.kvstore import KVStoreResource
@@ -35,6 +36,7 @@ class AliyunOptions:
         slb_endpoint: Optional custom SLB endpoint.
         sas_endpoint: Optional custom Security Center endpoint.
         oss_endpoint: Optional custom OSS endpoint.
+        bss_endpoint: Optional custom BSS endpoint.
     """
 
     timeout_s: float = 8.0
@@ -50,6 +52,7 @@ class AliyunOptions:
     slb_endpoint: str | None = None
     sas_endpoint: str | None = None
     oss_endpoint: str | None = None
+    bss_endpoint: str | None = None
 
 
 class Aliyun:
@@ -98,6 +101,7 @@ class Aliyun:
                 slb_endpoint=opt.slb_endpoint,
                 sas_endpoint=opt.sas_endpoint,
                 oss_endpoint=opt.oss_endpoint,
+                bss_endpoint=opt.bss_endpoint,
             ),
         )
         self.ecs = ECSResource(self._client)
@@ -110,3 +114,4 @@ class Aliyun:
         self.sas = SASResource(self._client)
         self.oss = OSSResource(self._client)
         self.sls = SLSResource(self._client)
+        self.bss = BSSResource(self._client)

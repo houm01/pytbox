@@ -184,3 +184,155 @@ class RDSResource:
             return ReturnResponse(code=0, msg="success", data=body_to_map(response))
         except Exception as error:  # noqa: BLE001
             return failure_response(error)
+
+    def get_instance_performance(
+        self,
+        instance_id: str,
+        *,
+        key: str,
+        start_time: str,
+        end_time: str,
+        node_id: str | None = None,
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """Get RDS performance metrics for an instance.
+
+        Args:
+            instance_id: RDS instance id.
+            key: Performance metric key.
+            start_time: Query start time in UTC ISO8601.
+            end_time: Query end time in UTC ISO8601.
+            node_id: Optional node id for cluster instances.
+            **kwargs: Additional SDK request arguments.
+
+        Returns:
+            ReturnResponse: ``data`` contains serialized performance payload.
+        """
+        try:
+            request = rds_models.DescribeDBInstancePerformanceRequest(
+                dbinstance_id=instance_id,
+                key=key,
+                start_time=start_time,
+                end_time=end_time,
+                node_id=node_id,
+                **kwargs,
+            )
+            runtime = util_models.RuntimeOptions()
+            response = self._c.call(
+                "rds_get_instance_performance",
+                lambda: self._c.rds.describe_dbinstance_performance_with_options(request, runtime),
+            )
+            return ReturnResponse(code=0, msg="success", data=body_to_map(response))
+        except Exception as error:  # noqa: BLE001
+            return failure_response(error)
+
+    def list_slow_log_records(
+        self,
+        instance_id: str,
+        *,
+        start_time: str,
+        end_time: str,
+        page_size: int = 100,
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """List slow log records for an RDS instance.
+
+        Args:
+            instance_id: RDS instance id.
+            start_time: Query start time.
+            end_time: Query end time.
+            page_size: Number of records per page.
+            **kwargs: Additional SDK request arguments.
+
+        Returns:
+            ReturnResponse: ``data`` is a flattened slow-log record list.
+        """
+        try:
+            return self._list_paginated(
+                action="rds_list_slow_log_records",
+                request_cls=rds_models.DescribeSlowLogRecordsRequest,
+                sdk_method_name="describe_slow_log_records_with_options",
+                container_key="Items",
+                item_key="SQLSlowRecord",
+                page_size=page_size,
+                dbinstance_id=instance_id,
+                start_time=start_time,
+                end_time=end_time,
+                **kwargs,
+            )
+        except Exception as error:  # noqa: BLE001
+            return failure_response(error)
+
+    def list_slow_logs(
+        self,
+        instance_id: str,
+        *,
+        start_time: str,
+        end_time: str,
+        page_size: int = 100,
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """List aggregated slow-log entries for an RDS instance.
+
+        Args:
+            instance_id: RDS instance id.
+            start_time: Query start time.
+            end_time: Query end time.
+            page_size: Number of records per page.
+            **kwargs: Additional SDK request arguments.
+
+        Returns:
+            ReturnResponse: ``data`` is a flattened slow-log aggregation list.
+        """
+        try:
+            return self._list_paginated(
+                action="rds_list_slow_logs",
+                request_cls=rds_models.DescribeSlowLogsRequest,
+                sdk_method_name="describe_slow_logs_with_options",
+                container_key="Items",
+                item_key="SQLSlowLog",
+                page_size=page_size,
+                dbinstance_id=instance_id,
+                start_time=start_time,
+                end_time=end_time,
+                **kwargs,
+            )
+        except Exception as error:  # noqa: BLE001
+            return failure_response(error)
+
+    def list_error_logs(
+        self,
+        instance_id: str,
+        *,
+        start_time: str,
+        end_time: str,
+        page_size: int = 100,
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """List error logs for an RDS instance.
+
+        Args:
+            instance_id: RDS instance id.
+            start_time: Query start time.
+            end_time: Query end time.
+            page_size: Number of records per page.
+            **kwargs: Additional SDK request arguments.
+
+        Returns:
+            ReturnResponse: ``data`` is a flattened error-log list.
+        """
+        try:
+            return self._list_paginated(
+                action="rds_list_error_logs",
+                request_cls=rds_models.DescribeErrorLogsRequest,
+                sdk_method_name="describe_error_logs_with_options",
+                container_key="Items",
+                item_key="ErrorLog",
+                page_size=page_size,
+                dbinstance_id=instance_id,
+                start_time=start_time,
+                end_time=end_time,
+                **kwargs,
+            )
+        except Exception as error:  # noqa: BLE001
+            return failure_response(error)

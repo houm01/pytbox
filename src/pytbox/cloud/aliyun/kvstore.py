@@ -191,3 +191,43 @@ class KVStoreResource:
             return ReturnResponse(code=0, msg="success", data=body_to_map(response))
         except Exception as error:  # noqa: BLE001
             return failure_response(error)
+
+    def list_slow_log_records(
+        self,
+        instance_id: str,
+        *,
+        start_time: str,
+        end_time: str,
+        page_size: int = 100,
+        region: str | None = None,
+        **kwargs: Any,
+    ) -> ReturnResponse:
+        """List slow log records for a KVStore instance.
+
+        Args:
+            instance_id: KVStore instance id.
+            start_time: Query start time.
+            end_time: Query end time.
+            page_size: Number of records per page.
+            region: Optional region override.
+            **kwargs: Additional SDK request arguments.
+
+        Returns:
+            ReturnResponse: ``data`` is a flattened slow-log record list.
+        """
+        try:
+            return self._list_paginated(
+                action="kvstore_list_slow_log_records",
+                request_cls=kvstore_models.DescribeSlowLogRecordsRequest,
+                sdk_method_name="describe_slow_log_records_with_options",
+                container_key="Items",
+                item_key="LogRecords",
+                region=region,
+                page_size=page_size,
+                instance_id=instance_id,
+                start_time=start_time,
+                end_time=end_time,
+                **kwargs,
+            )
+        except Exception as error:  # noqa: BLE001
+            return failure_response(error)

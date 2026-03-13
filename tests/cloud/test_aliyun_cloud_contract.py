@@ -156,6 +156,23 @@ def _install_fake_aliyun_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
         def __init__(self, **kwargs: Any) -> None:
             self.kwargs = kwargs
 
+    bss_pkg = types.ModuleType("alibabacloud_bssopenapi20171214")
+    bss_client_mod = types.ModuleType("alibabacloud_bssopenapi20171214.client")
+    bss_models_mod = types.ModuleType("alibabacloud_bssopenapi20171214.models")
+
+    class FakeBssClient:
+        """Fake BSS SDK client."""
+
+        def __init__(self, config: Any) -> None:
+            self.config = config
+
+    bss_client_mod.Client = FakeBssClient
+    bss_models_mod.QueryResourcePackageInstancesRequest = _Request
+    bss_pkg.models = bss_models_mod
+    register("alibabacloud_bssopenapi20171214", bss_pkg)
+    register("alibabacloud_bssopenapi20171214.client", bss_client_mod)
+    register("alibabacloud_bssopenapi20171214.models", bss_models_mod)
+
     ram_client_mod.Client = FakeRamClient
     ram_models_mod.ListUsersRequest = _Request
     ram_models_mod.ListAccessKeysRequest = _Request
@@ -186,6 +203,10 @@ def _install_fake_aliyun_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     rds_models_mod.DescribeDBInstanceIPArrayListRequest = _Request
     rds_models_mod.DescribeParametersRequest = _Request
     rds_models_mod.DescribeBackupPolicyRequest = _Request
+    rds_models_mod.DescribeDBInstancePerformanceRequest = _Request
+    rds_models_mod.DescribeSlowLogsRequest = _Request
+    rds_models_mod.DescribeSlowLogRecordsRequest = _Request
+    rds_models_mod.DescribeErrorLogsRequest = _Request
     rds_pkg.models = rds_models_mod
     register("alibabacloud_rds20140815", rds_pkg)
     register("alibabacloud_rds20140815.client", rds_client_mod)
@@ -207,6 +228,7 @@ def _install_fake_aliyun_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     kvstore_models_mod.DescribeSecurityIpsRequest = _Request
     kvstore_models_mod.DescribeParametersRequest = _Request
     kvstore_models_mod.DescribeBackupPolicyRequest = _Request
+    kvstore_models_mod.DescribeSlowLogRecordsRequest = _Request
     kvstore_pkg.models = kvstore_models_mod
     register("alibabacloud_r_kvstore20150101", kvstore_pkg)
     register("alibabacloud_r_kvstore20150101.client", kvstore_client_mod)
@@ -343,6 +365,7 @@ def _load_aliyun_modules() -> tuple[Any, ...]:
     ram_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.ram"))
     rds_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.rds"))
     kvstore_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.kvstore"))
+    bss_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.bss"))
     vpc_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.vpc"))
     slb_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.slb"))
     sas_mod = importlib.reload(importlib.import_module("pytbox.cloud.aliyun.sas"))
@@ -355,6 +378,7 @@ def _load_aliyun_modules() -> tuple[Any, ...]:
         ram_mod,
         rds_mod,
         kvstore_mod,
+        bss_mod,
         vpc_mod,
         slb_mod,
         sas_mod,
@@ -373,6 +397,7 @@ def test_aliyun_options_passthrough_and_retry_cap(monkeypatch: pytest.MonkeyPatc
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -391,6 +416,7 @@ def test_aliyun_options_passthrough_and_retry_cap(monkeypatch: pytest.MonkeyPatc
         slb_endpoint="custom.slb.endpoint",
         sas_endpoint="custom.sas.endpoint",
         oss_endpoint="custom.oss.endpoint",
+        bss_endpoint="custom.bss.endpoint",
     )
     ali = aliyun_mod.Aliyun(ak="ak", sk="secret-sk", region="cn-shanghai", options=options)
 
@@ -404,6 +430,7 @@ def test_aliyun_options_passthrough_and_retry_cap(monkeypatch: pytest.MonkeyPatc
     assert ali._client.cfg.slb_endpoint == "custom.slb.endpoint"
     assert ali._client.cfg.sas_endpoint == "custom.sas.endpoint"
     assert ali._client.cfg.oss_endpoint == "custom.oss.endpoint"
+    assert ali._client.cfg.bss_endpoint == "custom.bss.endpoint"
     assert hasattr(ali, "sls")
     assert hasattr(ali, "rds")
     assert hasattr(ali, "kvstore")
@@ -411,6 +438,7 @@ def test_aliyun_options_passthrough_and_retry_cap(monkeypatch: pytest.MonkeyPatc
     assert hasattr(ali, "slb")
     assert hasattr(ali, "sas")
     assert hasattr(ali, "oss")
+    assert hasattr(ali, "bss")
 
 
 def test_aliyun_client_call_retries_and_logs(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
@@ -423,6 +451,7 @@ def test_aliyun_client_call_retries_and_logs(monkeypatch: pytest.MonkeyPatch, ca
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -466,6 +495,7 @@ def test_aliyun_ecs_get_instance_and_list_instance_ids(monkeypatch: pytest.Monke
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -531,6 +561,7 @@ def test_aliyun_ecs_count_unbound_resources(monkeypatch: pytest.MonkeyPatch) -> 
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -647,6 +678,7 @@ def test_aliyun_ecs_read_only_helpers_return_flattened_payloads(monkeypatch: pyt
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -841,6 +873,7 @@ def test_aliyun_cms_latest_metric_point(monkeypatch: pytest.MonkeyPatch) -> None
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -906,6 +939,7 @@ def test_aliyun_ram_aliases_match_get_methods(monkeypatch: pytest.MonkeyPatch) -
         ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
@@ -983,6 +1017,7 @@ def test_aliyun_rds_kvstore_network_and_sas_helpers(monkeypatch: pytest.MonkeyPa
         _ram_mod,
         rds_mod,
         kvstore_mod,
+        bss_mod,
         vpc_mod,
         slb_mod,
         sas_mod,
@@ -1043,6 +1078,71 @@ def test_aliyun_rds_kvstore_network_and_sas_helpers(monkeypatch: pytest.MonkeyPa
         def describe_backup_policy_with_options(self, _req: Any, _runtime: Any) -> Any:
             return FakeResponse({"PreferredBackupPeriod": "Monday,Tuesday"})
 
+        def describe_dbinstance_performance_with_options(self, _req: Any, _runtime: Any) -> Any:
+            return FakeResponse(
+                {
+                    "DBInstanceId": "rm-1",
+                    "PerformanceKeys": {
+                        "PerformanceKey": [
+                            {
+                                "Key": "MySQL_DetailedSpaceUsage",
+                                "Values": {
+                                    "PerformanceValue": [
+                                        {"Date": "2026-03-10T00:00:00Z", "Value": "20"},
+                                        {"Date": "2026-03-10T01:00:00Z", "Value": "30"},
+                                    ]
+                                },
+                            }
+                        ]
+                    },
+                }
+            )
+
+        def describe_slow_log_records_with_options(self, _req: Any, _runtime: Any) -> Any:
+            return FakeResponse(
+                {
+                    "TotalRecordCount": 1,
+                    "Items": {
+                        "SQLSlowRecord": [
+                            {
+                                "ExecutionStartTime": "2026-03-10T00:10:00Z",
+                                "SQLText": "select 1",
+                            }
+                        ]
+                    },
+                }
+            )
+
+        def describe_slow_logs_with_options(self, _req: Any, _runtime: Any) -> Any:
+            return FakeResponse(
+                {
+                    "TotalRecordCount": 1,
+                    "Items": {
+                        "SQLSlowLog": [
+                            {
+                                "CreateTime": "2026-03-10T00:00:00Z",
+                                "DBName": "test",
+                            }
+                        ]
+                    },
+                }
+            )
+
+        def describe_error_logs_with_options(self, _req: Any, _runtime: Any) -> Any:
+            return FakeResponse(
+                {
+                    "TotalRecordCount": 1,
+                    "Items": {
+                        "ErrorLog": [
+                            {
+                                "CreateTime": "2026-03-10T00:20:00Z",
+                                "ErrorInfo": "deadlock detected",
+                            }
+                        ]
+                    },
+                }
+            )
+
     class FakeKVStoreApi:
         """Fake KVStore API."""
 
@@ -1080,6 +1180,45 @@ def test_aliyun_rds_kvstore_network_and_sas_helpers(monkeypatch: pytest.MonkeyPa
 
         def describe_backup_policy_with_options(self, _req: Any, _runtime: Any) -> Any:
             return FakeResponse({"BackupRetentionPeriod": "7"})
+
+        def describe_slow_log_records_with_options(self, _req: Any, _runtime: Any) -> Any:
+            return FakeResponse(
+                {
+                    "TotalRecordCount": 1,
+                    "Items": {
+                        "LogRecords": [
+                            {
+                                "ExecuteTime": "2026-03-10T00:30:00Z",
+                                "Command": "set a b",
+                            }
+                        ]
+                    },
+                }
+            )
+
+    class FakeBssApi:
+        """Fake BSS API."""
+
+        def query_resource_package_instances_with_options(self, _req: Any, _runtime: Any) -> Any:
+            return FakeResponse(
+                {
+                    "Total": 1,
+                    "Data": {
+                        "TotalCount": "1",
+                        "Instances": {
+                            "Instance": [
+                                {
+                                    "InstanceId": "pkg-1",
+                                    "PackageType": "Capacity",
+                                    "Status": "Available",
+                                    "TotalAmount": "100",
+                                    "RemainingAmount": "40",
+                                }
+                            ]
+                        },
+                    },
+                }
+            )
 
     class FakeVpcApi:
         """Fake VPC API."""
@@ -1145,6 +1284,7 @@ def test_aliyun_rds_kvstore_network_and_sas_helpers(monkeypatch: pytest.MonkeyPa
             self.cfg = types.SimpleNamespace(region="cn-shanghai")
             self.rds = FakeRdsApi()
             self.kvstore = FakeKVStoreApi()
+            self.bss = FakeBssApi()
             self.vpc = FakeVpcApi()
             self.slb = FakeSlbApi()
             self.sas = FakeSasApi()
@@ -1156,6 +1296,7 @@ def test_aliyun_rds_kvstore_network_and_sas_helpers(monkeypatch: pytest.MonkeyPa
 
     rds_resource = rds_mod.RDSResource(client)
     kvstore_resource = kvstore_mod.KVStoreResource(client)
+    bss_resource = bss_mod.BSSResource(client)
     vpc_resource = vpc_mod.VPCResource(client)
     slb_resource = slb_mod.SLBResource(client)
     sas_resource = sas_mod.SASResource(client)
@@ -1165,12 +1306,39 @@ def test_aliyun_rds_kvstore_network_and_sas_helpers(monkeypatch: pytest.MonkeyPa
     assert rds_resource.list_whitelist_groups("rm-1").data[0]["DBInstanceIPArrayName"] == "default"
     assert rds_resource.list_parameters("rm-1").data["running_parameters"][0]["ParameterName"] == "max_connections"
     assert rds_resource.get_backup_policy("rm-1").data["PreferredBackupPeriod"] == "Monday,Tuesday"
+    assert rds_resource.get_instance_performance(
+        "rm-1",
+        key="MySQL_DetailedSpaceUsage",
+        start_time="2026-03-10T00:00:00Z",
+        end_time="2026-03-10T01:00:00Z",
+    ).data["PerformanceKeys"]["PerformanceKey"][0]["Key"] == "MySQL_DetailedSpaceUsage"
+    assert rds_resource.list_slow_log_records(
+        "rm-1",
+        start_time="2026-03-10T00:00:00Z",
+        end_time="2026-03-10T01:00:00Z",
+    ).data[0]["ExecutionStartTime"] == "2026-03-10T00:10:00Z"
+    assert rds_resource.list_slow_logs(
+        "rm-1",
+        start_time="2026-03-10T00:00:00Z",
+        end_time="2026-03-10T01:00:00Z",
+    ).data[0]["CreateTime"] == "2026-03-10T00:00:00Z"
+    assert rds_resource.list_error_logs(
+        "rm-1",
+        start_time="2026-03-10T00:00:00Z",
+        end_time="2026-03-10T01:00:00Z",
+    ).data[0]["ErrorInfo"] == "deadlock detected"
 
     assert kvstore_resource.list_instances().data[0]["InstanceId"] == "r-1"
     assert kvstore_resource.get_instance("r-1").data["InstanceId"] == "r-1"
     assert kvstore_resource.list_security_ips("r-1").data[0]["SecurityIpGroupName"] == "default"
     assert kvstore_resource.list_parameters("r-1").data["config_parameters"][0]["ParameterName"] == "maxmemory-policy"
     assert kvstore_resource.get_backup_policy("r-1").data["BackupRetentionPeriod"] == "7"
+    assert kvstore_resource.list_slow_log_records(
+        "r-1",
+        start_time="2026-03-10T00:00:00Z",
+        end_time="2026-03-10T01:00:00Z",
+    ).data[0]["ExecuteTime"] == "2026-03-10T00:30:00Z"
+    assert bss_resource.query_resource_package_instances(product_code="ossbag").data[0]["InstanceId"] == "pkg-1"
 
     assert vpc_resource.list_eips().data[0]["AllocationId"] == "eip-1"
     assert vpc_resource.list_vpcs().data[0]["VpcId"] == "vpc-1"
@@ -1190,6 +1358,7 @@ def test_aliyun_oss_helpers_serialize_bucket_payloads(monkeypatch: pytest.Monkey
         _ram_mod,
         _rds_mod,
         _kvstore_mod,
+        _bss_mod,
         _vpc_mod,
         _slb_mod,
         _sas_mod,
