@@ -165,45 +165,49 @@ def test_publish_auto_first_tag_with_confirmation(tmp_path: Path) -> None:
     output = _strip_ansi(result.stdout + result.stderr)
 
     assert result.returncode == 0
-    assert "目标标签: v0.0.1-20260212" in output
+    assert "目标标签: v20260212.1" in output
     assert "模式: auto" in output
-    assert "v0.0.1-20260212" in _list_local_tags(repo_path)
-    assert _remote_has_tag(repo_path, "v0.0.1-20260212")
+    assert "v20260212.1" in _list_local_tags(repo_path)
+    assert _remote_has_tag(repo_path, "v20260212.1")
     assert _head_commit(repo_path) == before_head
 
 
-def test_publish_auto_carry_from_009_to_011(tmp_path: Path) -> None:
-    """Auto mode should carry 0.0.9 to 0.1.1."""
+def test_publish_auto_increments_same_day_sequence(tmp_path: Path) -> None:
+    """Auto mode should increment the highest sequence for the same day."""
     repo_path = _init_publish_repo(tmp_path)
-    _run_command(["git", "tag", "-a", "v0.0.9-20260211", "-m", "v0.0.9-20260211"], cwd=repo_path)
-    _run_command(["git", "push", "origin", "v0.0.9-20260211"], cwd=repo_path)
+    _run_command(["git", "tag", "-a", "v20260212.2", "-m", "v20260212.2"], cwd=repo_path)
+    _run_command(["git", "push", "origin", "v20260212.2"], cwd=repo_path)
 
     result = _run_publish_script(repo_path, args=["--yes"], today="20260212")
     output = _strip_ansi(result.stdout + result.stderr)
 
     assert result.returncode == 0
-    assert "目标标签: v0.1.1-20260212" in output
-    assert "v0.1.1-20260212" in _list_local_tags(repo_path)
+    assert "目标标签: v20260212.3" in output
+    assert "v20260212.3" in _list_local_tags(repo_path)
 
 
-def test_publish_auto_carry_from_099_to_111(tmp_path: Path) -> None:
-    """Auto mode should carry 0.9.9 to 1.1.1."""
+def test_publish_auto_ignores_old_tag_formats(tmp_path: Path) -> None:
+    """Auto mode should ignore legacy tag formats when computing sequence."""
     repo_path = _init_publish_repo(tmp_path)
-    _run_command(["git", "tag", "-a", "v0.9.9-20260211", "-m", "v0.9.9-20260211"], cwd=repo_path)
-    _run_command(["git", "push", "origin", "v0.9.9-20260211"], cwd=repo_path)
+    _run_command(["git", "tag", "-a", "v0.7.9-20260212", "-m", "v0.7.9-20260212"], cwd=repo_path)
+    _run_command(["git", "push", "origin", "v0.7.9-20260212"], cwd=repo_path)
+    _run_command(["git", "tag", "-a", "v0.7.9", "-m", "v0.7.9"], cwd=repo_path)
+    _run_command(["git", "push", "origin", "v0.7.9"], cwd=repo_path)
+    _run_command(["git", "tag", "-a", "v20260211.9", "-m", "v20260211.9"], cwd=repo_path)
+    _run_command(["git", "push", "origin", "v20260211.9"], cwd=repo_path)
 
     result = _run_publish_script(repo_path, args=["--yes"], today="20260212")
     output = _strip_ansi(result.stdout + result.stderr)
 
     assert result.returncode == 0
-    assert "目标标签: v1.1.1-20260212" in output
-    assert "v1.1.1-20260212" in _list_local_tags(repo_path)
+    assert "目标标签: v20260212.1" in output
+    assert "v20260212.1" in _list_local_tags(repo_path)
 
 
 def test_publish_manual_tag_success_when_today(tmp_path: Path) -> None:
     """Manual tag should succeed when date equals today."""
     repo_path = _init_publish_repo(tmp_path)
-    tag = "v1.2.3-20260212"
+    tag = "v20260212.7"
 
     result = _run_publish_script(repo_path, args=[tag, "--yes"], today="20260212")
     output = _strip_ansi(result.stdout + result.stderr)
@@ -219,13 +223,28 @@ def test_publish_manual_tag_fails_when_not_today(tmp_path: Path) -> None:
     repo_path = _init_publish_repo(tmp_path)
     result = _run_publish_script(
         repo_path,
-        args=["v1.2.3-20260211", "--yes"],
+        args=["v20260211.1", "--yes"],
         today="20260212",
     )
     output = _strip_ansi(result.stdout + result.stderr)
 
     assert result.returncode == 1
     assert "手动 tag 日期必须是当天 20260212" in output
+    assert _list_local_tags(repo_path) == ""
+
+
+def test_publish_manual_tag_fails_when_format_invalid(tmp_path: Path) -> None:
+    """Manual tag should reject invalid date-version formats."""
+    repo_path = _init_publish_repo(tmp_path)
+    result = _run_publish_script(
+        repo_path,
+        args=["v20260212.0", "--yes"],
+        today="20260212",
+    )
+    output = _strip_ansi(result.stdout + result.stderr)
+
+    assert result.returncode == 1
+    assert "手动 tag 格式必须为 vYYYYMMDD.N，且 N 必须为正整数" in output
     assert _list_local_tags(repo_path) == ""
 
 
@@ -243,7 +262,7 @@ def test_publish_cancel_when_not_confirmed(tmp_path: Path) -> None:
 def test_publish_fails_when_tag_exists(tmp_path: Path) -> None:
     """Script should fail if target tag already exists."""
     repo_path = _init_publish_repo(tmp_path)
-    existed_tag = "v0.0.1-20260212"
+    existed_tag = "v20260212.1"
     _run_command(["git", "tag", "-a", existed_tag, "-m", existed_tag], cwd=repo_path)
     _run_command(["git", "push", "origin", existed_tag], cwd=repo_path)
 
