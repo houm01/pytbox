@@ -10,16 +10,10 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 
 LOGGER = logging.getLogger(__name__)
-TAG_WITH_DATE_PATTERN = re.compile(
-    r"^v(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)-(?P<date>\d{8})$"
-)
-TAG_SIMPLE_PATTERN = re.compile(
-    r"^v(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$"
-)
+TAG_PATTERN = re.compile(r"^v(?P<date>\d{8})\.(?P<sequence>[1-9]\d*)$")
 VERSION_LINE_PATTERN = re.compile(r'(?m)^version = ".*"$')
 
 
@@ -28,16 +22,12 @@ class ParsedTag:
     """Parsed release tag fields.
 
     Attributes:
-        major: Major version value.
-        minor: Minor version value.
-        patch: Patch version value.
-        date: Optional date suffix in YYYYMMDD.
+        date: Release date in YYYYMMDD.
+        sequence: Release sequence for the same date.
     """
 
-    major: int
-    minor: int
-    patch: int
-    date: Optional[str]
+    date: str
+    sequence: int
 
     @property
     def pep440_version(self) -> str:
@@ -46,17 +36,14 @@ class ParsedTag:
         Returns:
             str: PEP440-compliant version string.
         """
-        base = f"{self.major}.{self.minor}.{self.patch}"
-        if self.date is None:
-            return base
-        return f"{base}.post{self.date}"
+        return f"{self.date}.{self.sequence}"
 
 
 def parse_release_tag(tag: str) -> ParsedTag:
     """Parse release tag into structured version fields.
 
     Args:
-        tag: Git tag string, supports `vX.Y.Z` and `vX.Y.Z-YYYYMMDD`.
+        tag: Git tag string, supports `vYYYYMMDD.N`.
 
     Returns:
         ParsedTag: Structured tag fields.
@@ -64,24 +51,13 @@ def parse_release_tag(tag: str) -> ParsedTag:
     Raises:
         ValueError: If tag format is unsupported.
     """
-    with_date = TAG_WITH_DATE_PATTERN.match(tag)
-    if with_date is not None:
-        date_value = with_date.group("date")
+    matched = TAG_PATTERN.match(tag)
+    if matched is not None:
+        date_value = matched.group("date")
         _validate_date(date_value)
         return ParsedTag(
-            major=int(with_date.group("major")),
-            minor=int(with_date.group("minor")),
-            patch=int(with_date.group("patch")),
             date=date_value,
-        )
-
-    simple = TAG_SIMPLE_PATTERN.match(tag)
-    if simple is not None:
-        return ParsedTag(
-            major=int(simple.group("major")),
-            minor=int(simple.group("minor")),
-            patch=int(simple.group("patch")),
-            date=None,
+            sequence=int(matched.group("sequence")),
         )
 
     raise ValueError(f"unsupported tag format: {tag}")
@@ -144,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tag",
         required=True,
-        help="Release tag, e.g. v0.7.5-20260212 or v0.7.5.",
+        help="Release tag, e.g. v20260314.1.",
     )
     parser.add_argument(
         "--pyproject",

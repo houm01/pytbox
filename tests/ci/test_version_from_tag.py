@@ -36,25 +36,18 @@ MODULE = _load_module()
 
 
 def test_parse_release_tag_with_date() -> None:
-    """Date style tag should map to post-release PEP440 version."""
-    parsed = MODULE.parse_release_tag("v0.7.5-20260212")
+    """Date version tag should map directly to package version."""
+    parsed = MODULE.parse_release_tag("v20260314.1")
 
-    assert parsed.major == 0
-    assert parsed.minor == 7
-    assert parsed.patch == 5
-    assert parsed.date == "20260212"
-    assert parsed.pep440_version == "0.7.5.post20260212"
+    assert parsed.date == "20260314"
+    assert parsed.sequence == 1
+    assert parsed.pep440_version == "20260314.1"
 
 
-def test_parse_release_tag_without_date() -> None:
-    """Simple semver tag should keep base PEP440 version."""
-    parsed = MODULE.parse_release_tag("v1.2.3")
-
-    assert parsed.major == 1
-    assert parsed.minor == 2
-    assert parsed.patch == 3
-    assert parsed.date is None
-    assert parsed.pep440_version == "1.2.3"
+def test_parse_release_tag_rejects_zero_sequence() -> None:
+    """Release sequence must be a positive integer."""
+    with pytest.raises(ValueError, match="unsupported tag format"):
+        MODULE.parse_release_tag("v20260314.0")
 
 
 def test_parse_release_tag_rejects_invalid_format() -> None:
@@ -66,7 +59,7 @@ def test_parse_release_tag_rejects_invalid_format() -> None:
 def test_parse_release_tag_rejects_invalid_date() -> None:
     """Invalid calendar date should raise ValueError."""
     with pytest.raises(ValueError, match="invalid date in tag"):
-        MODULE.parse_release_tag("v1.2.3-20260230")
+        MODULE.parse_release_tag("v20260230.1")
 
 
 def test_update_pyproject_version_updates_once(tmp_path: Path) -> None:
@@ -77,10 +70,10 @@ def test_update_pyproject_version_updates_once(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    MODULE.update_pyproject_version(pyproject_path, "0.7.5.post20260212")
+    MODULE.update_pyproject_version(pyproject_path, "20260314.1")
     content = pyproject_path.read_text(encoding="utf-8")
 
-    assert 'version = "0.7.5.post20260212"' in content
+    assert 'version = "20260314.1"' in content
     assert 'version = "0.7.3"' not in content
 
 
@@ -90,7 +83,7 @@ def test_update_pyproject_version_raises_when_missing(tmp_path: Path) -> None:
     pyproject_path.write_text('[project]\nname = "pytbox"\n', encoding="utf-8")
 
     with pytest.raises(ValueError, match="failed to locate version field"):
-        MODULE.update_pyproject_version(pyproject_path, "0.7.5")
+        MODULE.update_pyproject_version(pyproject_path, "20260314.1")
 
 
 def test_main_updates_pyproject_and_exports_env(tmp_path: Path) -> None:
@@ -107,7 +100,7 @@ def test_main_updates_pyproject_and_exports_env(tmp_path: Path) -> None:
             sys.executable,
             str(SCRIPT_PATH),
             "--tag",
-            "v0.7.5-20260212",
+            "v20260314.1",
             "--pyproject",
             str(pyproject_path),
             "--github-env",
@@ -119,5 +112,5 @@ def test_main_updates_pyproject_and_exports_env(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0
-    assert 'version = "0.7.5.post20260212"' in pyproject_path.read_text(encoding="utf-8")
-    assert "PACKAGE_VERSION=0.7.5.post20260212" in env_path.read_text(encoding="utf-8")
+    assert 'version = "20260314.1"' in pyproject_path.read_text(encoding="utf-8")
+    assert "PACKAGE_VERSION=20260314.1" in env_path.read_text(encoding="utf-8")

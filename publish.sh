@@ -15,17 +15,18 @@ MODE=""
 
 show_help() {
     echo -e "${BLUE}用法:${NC}"
-    echo -e "  $0 [vX.Y.Z-YYYYMMDD] [--yes]"
+    echo -e "  $0 [vYYYYMMDD.N] [--yes]"
     echo -e ""
     echo -e "${BLUE}说明:${NC}"
-    echo -e "  - 不传 tag 时自动计算下一版本并使用当天日期"
-    echo -e "  - 传 tag 时必须是完整格式 vX.Y.Z-YYYYMMDD，且日期必须为当天"
+    echo -e "  - 不传 tag 时自动生成当天版本号，格式为 vYYYYMMDD.N"
+    echo -e "  - 自动模式会查找当天已有 tag，并按最大序号 + 1 递增"
+    echo -e "  - 传 tag 时必须是完整格式 vYYYYMMDD.N，且日期必须为当天"
     echo -e "  - 默认会先预览并要求确认，--yes 可跳过确认"
     echo -e ""
     echo -e "${BLUE}示例:${NC}"
     echo -e "  $0"
     echo -e "  $0 --yes"
-    echo -e "  $0 v0.1.1-20260212"
+    echo -e "  $0 v20260314.1"
 }
 
 current_date() {
@@ -44,51 +45,22 @@ fetch_tags() {
     fi
 }
 
-compute_next_version() {
-    local best_major=-1
-    local best_minor=-1
-    local best_patch=-1
-    local major=0
-    local minor=0
-    local patch=1
+compute_next_tag() {
+    local today="$1"
+    local highest_sequence=0
     local tag
-    local matched=0
 
     while IFS= read -r tag; do
-        if [[ "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-([0-9]{8})$ ]]; then
-            local m_major="${BASH_REMATCH[1]}"
-            local m_minor="${BASH_REMATCH[2]}"
-            local m_patch="${BASH_REMATCH[3]}"
-            matched=1
-            if (( m_major > best_major )) \
-                || (( m_major == best_major && m_minor > best_minor )) \
-                || (( m_major == best_major && m_minor == best_minor && m_patch > best_patch )); then
-                best_major="$m_major"
-                best_minor="$m_minor"
-                best_patch="$m_patch"
+        if [[ "$tag" =~ ^v([0-9]{8})\.([1-9][0-9]*)$ ]]; then
+            local tag_date="${BASH_REMATCH[1]}"
+            local sequence="${BASH_REMATCH[2]}"
+            if [[ "${tag_date}" == "${today}" ]] && (( sequence > highest_sequence )); then
+                highest_sequence="${sequence}"
             fi
         fi
     done < <(git tag -l)
 
-    if (( matched == 1 )); then
-        major="$best_major"
-        minor="$best_minor"
-        patch="$best_patch"
-
-        if (( patch < 9 )); then
-            patch=$((patch + 1))
-        else
-            patch=1
-            if (( minor < 9 )); then
-                minor=$((minor + 1))
-            else
-                minor=1
-                major=$((major + 1))
-            fi
-        fi
-    fi
-
-    echo "${major}.${minor}.${patch}"
+    echo "v${today}.$((highest_sequence + 1))"
 }
 
 parse_args() {
@@ -118,12 +90,12 @@ validate_manual_tag() {
     local manual_tag="$1"
     local today="$2"
 
-    if [[ ! "${manual_tag}" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-([0-9]{8})$ ]]; then
-        echo -e "${RED}错误: 手动 tag 格式必须为 vX.Y.Z-YYYYMMDD${NC}"
+    if [[ ! "${manual_tag}" =~ ^v([0-9]{8})\.([1-9][0-9]*)$ ]]; then
+        echo -e "${RED}错误: 手动 tag 格式必须为 vYYYYMMDD.N，且 N 必须为正整数${NC}"
         exit 1
     fi
 
-    local tag_date="${BASH_REMATCH[4]}"
+    local tag_date="${BASH_REMATCH[1]}"
     if [[ "${tag_date}" != "${today}" ]]; then
         echo -e "${RED}错误: 手动 tag 日期必须是当天 ${today}${NC}"
         exit 1
@@ -166,9 +138,7 @@ main() {
         TARGET_TAG="${MANUAL_TAG}"
     else
         MODE="auto"
-        local version
-        version="$(compute_next_version)"
-        TARGET_TAG="v${version}-${today}"
+        TARGET_TAG="$(compute_next_tag "${today}")"
     fi
 
     echo -e "${BLUE}发布预览:${NC}"

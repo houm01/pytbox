@@ -217,15 +217,15 @@ ruff check src/ tests/
    ```bash
    ./publish.sh
    ```
-2. 如需手动指定标签（必须完整格式）：
+2. 如需手动指定标签（必须完整格式 `vYYYYMMDD.N`，且日期必须是当天）：
    ```bash
-   ./publish.sh v0.1.1-20260212
+   ./publish.sh v20260314.1
    ```
 3. CI/自动化场景可跳过确认：
    ```bash
    ./publish.sh --yes
    ```
-4. GitHub Actions 会在 `v*` 标签推送后自动构建并发布到 PyPI
+4. GitHub Actions 会在 `v*` 标签推送后自动构建并发布到 PyPI，包版本直接使用 `YYYYMMDD.N`
 
 ## 贡献
 
