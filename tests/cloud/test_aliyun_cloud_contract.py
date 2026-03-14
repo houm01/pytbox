@@ -863,6 +863,126 @@ def test_aliyun_ecs_read_only_helpers_return_flattened_payloads(monkeypatch: pyt
     assert resource.list_key_pairs().data[0]["KeyPairName"] == "kp-1"
 
 
+def test_aliyun_ecs_auto_snapshot_policy_associations_supports_token_pagination(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Auto snapshot associations should use max_results/next_token pagination."""
+    _install_fake_aliyun_sdk(monkeypatch)
+    (
+        _client_mod,
+        ecs_mod,
+        _cms_mod,
+        _ram_mod,
+        _rds_mod,
+        _kvstore_mod,
+        _bss_mod,
+        _vpc_mod,
+        _slb_mod,
+        _sas_mod,
+        _oss_mod,
+        _aliyun_mod,
+    ) = _load_aliyun_modules()
+
+    class StrictAssociationRequest:
+        """Fake SDK request that only accepts token-style pagination fields."""
+
+        def __init__(
+            self,
+            *,
+            region_id: str | None = None,
+            max_results: int | None = None,
+            next_token: str | None = None,
+            disk_id: str | None = None,
+        ) -> None:
+            self.kwargs = {
+                "region_id": region_id,
+                "max_results": max_results,
+                "next_token": next_token,
+                "disk_id": disk_id,
+            }
+
+    monkeypatch.setattr(
+        ecs_mod.ecs_models,
+        "DescribeAutoSnapshotPolicyAssociationsRequest",
+        StrictAssociationRequest,
+    )
+
+    class FakeBody:
+        """Fake response body."""
+
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def to_map(self) -> dict[str, Any]:
+            return self._payload
+
+    class FakeResponse:
+        """Fake SDK response."""
+
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self.body = FakeBody(payload)
+
+    class FakeEcsApi:
+        """Fake ECS API."""
+
+        def __init__(self) -> None:
+            self.requests: list[Any] = []
+
+        def describe_auto_snapshot_policy_associations(self, request: Any) -> FakeResponse:
+            self.requests.append(request)
+            if request.kwargs.get("next_token") == "token-2":
+                return FakeResponse(
+                    {
+                        "AutoSnapshotPolicyAssociations": {
+                            "AutoSnapshotPolicyAssociation": [
+                                {"AutoSnapshotPolicyId": "sp-2", "DiskId": "d-2"}
+                            ]
+                        }
+                    }
+                )
+            return FakeResponse(
+                {
+                    "NextToken": "token-2",
+                    "AutoSnapshotPolicyAssociations": {
+                        "AutoSnapshotPolicyAssociation": [
+                            {"AutoSnapshotPolicyId": "sp-1", "DiskId": "d-1"}
+                        ]
+                    },
+                }
+            )
+
+    class FakeClient:
+        """Fake Aliyun client."""
+
+        def __init__(self) -> None:
+            self.cfg = types.SimpleNamespace(region="cn-shanghai")
+            self.ecs = FakeEcsApi()
+
+        def call(self, _action: str, caller: Any) -> Any:
+            return caller()
+
+    client = FakeClient()
+    resource = ecs_mod.ECSResource(client)
+
+    response = resource.list_auto_snapshot_policy_associations(region="cn-shanghai", page_size=1, disk_id="d-1")
+
+    assert response.code == 0
+    assert response.data == [
+        {"AutoSnapshotPolicyId": "sp-1", "DiskId": "d-1"},
+        {"AutoSnapshotPolicyId": "sp-2", "DiskId": "d-2"},
+    ]
+    assert client.ecs.requests[0].kwargs == {
+        "region_id": "cn-shanghai",
+        "max_results": 1,
+        "next_token": None,
+        "disk_id": "d-1",
+    }
+    assert client.ecs.requests[1].kwargs == {
+        "region_id": "cn-shanghai",
+        "max_results": 1,
+        "next_token": "token-2",
+        "disk_id": "d-1",
+    }
+
+
 def test_aliyun_cms_latest_metric_point(monkeypatch: pytest.MonkeyPatch) -> None:
     """Latest metric helper should return newest timestamp point."""
     _install_fake_aliyun_sdk(monkeypatch)
