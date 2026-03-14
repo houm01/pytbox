@@ -377,16 +377,41 @@ class ECSResource:
         Returns:
             ReturnResponse: ``data`` is list of association dicts.
         """
-        return self._list_paginated(
-            action="ecs_list_auto_snapshot_policy_associations",
-            request_cls=ecs_models.DescribeAutoSnapshotPolicyAssociationsRequest,
-            sdk_method_name="describe_auto_snapshot_policy_associations",
-            container_key="AutoSnapshotPolicyAssociations",
-            item_key="AutoSnapshotPolicyAssociation",
-            region=region,
-            page_size=page_size,
-            **kwargs,
-        )
+        region_id = region or self._c.cfg.region
+        next_token: str | None = None
+        items_all: list[dict[str, Any]] = []
+
+        while True:
+            request_kwargs: dict[str, Any] = {
+                "region_id": region_id,
+                "max_results": page_size,
+                **kwargs,
+            }
+            if next_token:
+                request_kwargs["next_token"] = next_token
+
+            req = ecs_models.DescribeAutoSnapshotPolicyAssociationsRequest(**request_kwargs)
+            resp = self._c.call(
+                "ecs_list_auto_snapshot_policy_associations",
+                lambda: self._c.ecs.describe_auto_snapshot_policy_associations(req),
+            )
+            body = getattr(resp, "body", None)
+            body_map = body.to_map() if hasattr(body, "to_map") else {}
+            items = self._extract_collection(
+                body_map,
+                container_key="AutoSnapshotPolicyAssociations",
+                item_key="AutoSnapshotPolicyAssociation",
+            )
+            if not items:
+                break
+            items_all.extend(items)
+
+            next_token_value = body_map.get("NextToken")
+            if not isinstance(next_token_value, str) or not next_token_value.strip():
+                break
+            next_token = next_token_value.strip()
+
+        return ReturnResponse(code=0, msg="success", data=items_all)
 
     def list_security_groups(
         self,
